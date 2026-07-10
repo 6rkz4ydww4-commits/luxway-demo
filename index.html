@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<title>LuxWay — Private Transfer · Roma</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>body{margin:0;background:#0E1116}</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+const { useState, useMemo, useRef, useEffect } = React;
+
+/* ============================================================
+   LuxWay — Piattaforma transfer NCC (prototipo demo)
+   Due pannelli: Reception Hotel + Pannello Operatore (Carlos)
+   Dati in memoria (demo).
+   Commissioni fisse per corsa completata: 10 € all'hotel, 2 € alla piattaforma.
+   ============================================================ */
+
+const HOTEL_FEE = 10;   // € per corsa completata, all'hotel
+const PLATFORM_FEE = 2; // € per corsa completata, alla piattaforma
+
+const T = {
+  bg: "#0E1116",
+  surface: "#161B23",
+  surface2: "#1D242E",
+  line: "#2A323E",
+  ivory: "#EDE8DC",
+  muted: "#8A94A2",
+  gold: "#C7A566",
+  goldSoft: "rgba(199,165,102,0.14)",
+  green: "#7FBF97",
+  greenSoft: "rgba(127,191,151,0.12)",
+  red: "#D08072",
+  redSoft: "rgba(208,128,114,0.12)",
+  blue: "#8FB4D9",
+  blueSoft: "rgba(143,180,217,0.12)",
+};
+
+const HOTELS = [
+  { id: "h4", name: "Domus Liberius", address: "Via Liberiana 17, Roma" },
+  { id: "h1", name: "Grand Hotel Riviera", address: "Via Veneto 12, Roma" },
+  { id: "h2", name: "Palazzo Aurora", address: "Piazza Navona 8, Roma" },
+  { id: "h3", name: "Boutique Hotel Bellavista", address: "Via della Scala 23, Roma" },
+];
+
+/* Numero WhatsApp Business di LuxWay (segnaposto — da sostituire col numero reale) */
+const WHATSAPP_NUMBER = "393000000000";
+
+/* Luoghi frequenti e tariffe standard hotel ↔ luogo (modificabili) */
+const PLACES = [
+  { key: "Fiumicino", label: "Aeroporto di Fiumicino (FCO)", price: 70 },
+  { key: "Ciampino", label: "Aeroporto di Ciampino (CIA)", price: 70 },
+  { key: "Civitavecchia", label: "Porto di Civitavecchia", price: 120 },
+];
+
+const hotelLabel = (h) => `${h.name} — ${h.address}`;
+
+/* Se la tratta è hotel ↔ luogo frequente, restituisce la tariffa standard */
+const routePrice = (pickup, dropoff) => {
+  const find = (s) => PLACES.find((p) => (s || "").toLowerCase().includes(p.key.toLowerCase()));
+  const a = find(pickup);
+  const b = find(dropoff);
+  if (a && !b) return a.price;
+  if (b && !a) return b.price;
+  return 0;
+};
+
+const DRIVERS = ["Carlos", "Ari", "Marco R.", "Salvatore P.", "Denis K."];
+
+const SEED_RIDES = [
+  {
+    id: 1, code: "LW-1041", hotelId: "h1", client: "Sig. Andersen",
+    date: "2026-07-10", time: "09:30", pickup: "Grand Hotel Riviera — Via Veneto 12, Roma",
+    dropoff: "Aeroporto di Fiumicino (FCO)", pax: 2, flight: "AZ 1734",
+    notes: "2 valigie grandi", price: 70, status: "completata", driver: "Carlos",
+  },
+  {
+    id: 2, code: "LW-1042", hotelId: "h2", client: "Fam. Dubois",
+    date: "2026-07-10", time: "14:15", pickup: "Aeroporto di Ciampino (CIA)",
+    dropoff: "Palazzo Aurora — Piazza Navona 8, Roma", pax: 4, flight: "FR 1226",
+    notes: "Seggiolino bambino", price: 70, status: "confermata", driver: "Marco R.",
+  },
+  {
+    id: 3, code: "LW-1043", hotelId: "h1", client: "Sig.ra Keller",
+    date: "2026-07-11", time: "08:00", pickup: "Grand Hotel Riviera",
+    dropoff: "Stazione Centrale", pax: 1, flight: "",
+    notes: "", price: 45, status: "richiesta", driver: "",
+  },
+  {
+    id: 4, code: "LW-1044", hotelId: "h3", client: "Mr. & Mrs. Ito",
+    date: "2026-07-11", time: "18:45", pickup: "Boutique Hotel Bellavista",
+    dropoff: "Ristorante La Terrazza", pax: 2, flight: "",
+    notes: "Ritorno ore 23:00 da concordare", price: 0, status: "richiesta", driver: "",
+  },
+  {
+    id: 5, code: "LW-1045", hotelId: "h4", client: "Sig.ra Novak",
+    date: "2026-07-11", time: "06:15", pickup: "Domus Liberius — Via Liberiana 17, Roma",
+    dropoff: "Aeroporto di Fiumicino (FCO)", pax: 2, flight: "LH 233",
+    notes: "Partenza presto, colazione al sacco", price: 70, status: "richiesta", driver: "",
+  },
+];
+
+const eur = (n) =>
+  new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(n || 0);
+
+const dateIT = (iso) => {
+  if (!iso) return "";
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y}`;
+};
+
+const STATUS_META = {
+  richiesta: { label: "Da confermare", color: T.gold, soft: T.goldSoft },
+  confermata: { label: "Confermata", color: T.blue, soft: T.blueSoft },
+  completata: { label: "Completata", color: T.green, soft: T.greenSoft },
+  rifiutata: { label: "Rifiutata", color: T.red, soft: T.redSoft },
+};
+
+/* ---------- atoms ---------- */
+
+function Badge({ status }) {
+  const m = STATUS_META[status];
+  return (
+    <span
+      className="text-xs px-2 py-1 rounded-full font-medium tracking-wide"
+      style={{ color: m.color, background: m.soft, fontFamily: "Jost, sans-serif" }}
+    >
+      {m.label}
+    </span>
+  );
+}
+
+function Field({ label, children }) {
+  return (
+    <label className="block">
+      <span
+        className="block text-xs mb-1 uppercase tracking-widest"
+        style={{ color: T.muted, fontFamily: "Jost, sans-serif" }}
+      >
+        {label}
+      </span>
+      {children}
+    </label>
+  );
+}
+
+const inputStyle = {
+  background: T.surface2,
+  border: `1px solid ${T.line}`,
+  color: T.ivory,
+  fontFamily: "Jost, sans-serif",
+};
+
+function Input(props) {
+  return (
+    <input
+      {...props}
+      className={"w-full rounded-lg px-3 py-2 text-sm outline-none " + (props.className || "")}
+      style={{ ...inputStyle, ...(props.style || {}) }}
+    />
+  );
+}
+
+function Chips({ options, onPick }) {
+  return (
+    <div className="flex flex-wrap gap-1.5 mt-1.5">
+      {options.map((o) => (
+        <button
+          type="button"
+          key={o}
+          onClick={() => onPick(o)}
+          className="text-xs px-2.5 py-1 rounded-full text-left"
+          style={{
+            color: T.gold, background: T.goldSoft,
+            border: `1px solid ${T.line}`, fontFamily: "Jost, sans-serif",
+          }}
+        >
+          {o}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function Stat({ label, value, accent }) {
+  return (
+    <div
+      className="rounded-xl px-4 py-3 flex-1 min-w-0"
+      style={{ background: T.surface, border: `1px solid ${T.line}` }}
+    >
+      <div
+        className="text-xs uppercase tracking-widest mb-1 truncate"
+        style={{ color: T.muted, fontFamily: "Jost, sans-serif" }}
+      >
+        {label}
+      </div>
+      <div
+        className="text-xl"
+        style={{ color: accent || T.ivory, fontFamily: "Marcellus, serif" }}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- signature element: the valet ticket ---------- */
+
+function RideTicket({ ride, hotel, children, showHotel }) {
+  return (
+    <div
+      className="rounded-xl overflow-hidden"
+      style={{
+        background: T.surface,
+        border: `1px solid ${T.line}`,
+        borderLeft: `3px solid ${STATUS_META[ride.status].color}`,
+      }}
+    >
+      <div className="px-4 pt-3 pb-2 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div
+            className="text-xs tracking-widest mb-0.5"
+            style={{ color: T.gold, fontFamily: "Jost, sans-serif" }}
+          >
+            {ride.code}{showHotel && hotel ? ` · ${hotel.name}` : ""}
+          </div>
+          <div className="text-base truncate" style={{ color: T.ivory, fontFamily: "Marcellus, serif" }}>
+            {ride.client || "Ospite"}
+          </div>
+        </div>
+        <Badge status={ride.status} />
+      </div>
+
+      <div className="px-4 pb-3" style={{ fontFamily: "Jost, sans-serif" }}>
+        <div className="flex items-center gap-2 text-sm" style={{ color: T.ivory }}>
+          <span style={{ color: T.gold }}>◆</span>
+          <span className="truncate">{ride.pickup}</span>
+        </div>
+        <div className="flex items-center gap-2 text-sm mt-1" style={{ color: T.ivory }}>
+          <span style={{ color: T.muted }}>◇</span>
+          <span className="truncate">{ride.dropoff}</span>
+        </div>
+
+        <div
+          className="mt-3 pt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs"
+          style={{ borderTop: `1px dashed ${T.line}`, color: T.muted }}
+        >
+          <span>{dateIT(ride.date)} · ore {ride.time}</span>
+          <span>{ride.pax} pax</span>
+          {ride.flight ? <span>Volo {ride.flight}</span> : null}
+          {ride.driver ? <span style={{ color: T.blue }}>Autista: {ride.driver}</span> : null}
+          {ride.price > 0 ? (
+            <span style={{ color: T.gold }}>{eur(ride.price)}</span>
+          ) : (
+            <span style={{ color: T.gold }}>Prezzo da definire</span>
+          )}
+        </div>
+        {ride.notes ? (
+          <div className="mt-2 text-xs italic" style={{ color: T.muted }}>
+            “{ride.notes}”
+          </div>
+        ) : null}
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- WhatsApp widget ---------- */
+
+function WhatsAppWidget({ contextName }) {
+  const [open, setOpen] = useState(false);
+  const msg = encodeURIComponent(`Salve, scrivo da LuxWay (${contextName}).`);
+  const link = `https://wa.me/${WHATSAPP_NUMBER}?text=${msg}`;
+
+  return (
+    <div className="fixed bottom-4 right-4 z-20 flex flex-col items-end gap-2">
+      {open && (
+        <div
+          className="rounded-xl p-4 w-64 shadow-lg"
+          style={{ background: T.surface, border: `1px solid ${T.line}` }}
+        >
+          <div className="text-sm mb-1" style={{ color: T.ivory, fontFamily: "Marcellus, serif" }}>
+            LuxWay · Assistenza
+          </div>
+          <p className="text-xs mb-3" style={{ color: T.muted, fontFamily: "Jost, sans-serif" }}>
+            Per urgenze, modifiche last-minute o richieste particolari, scrivici su WhatsApp.
+          </p>
+          <a
+            href={link}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block text-center py-2 rounded-lg text-xs font-medium"
+            style={{ background: "#25D366", color: "#0B141A", fontFamily: "Jost, sans-serif" }}
+          >
+            Apri chat WhatsApp
+          </a>
+        </div>
+      )}
+      <button
+        onClick={() => setOpen((o) => !o)}
+        aria-label="Assistenza WhatsApp"
+        className="w-12 h-12 rounded-full flex items-center justify-center shadow-lg"
+        style={{ background: "#25D366" }}
+      >
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="#0B141A" aria-hidden="true">
+          <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+        </svg>
+      </button>
+    </div>
+  );
+}
+
+/* ---------- header ---------- */
+
+function Header({ subtitle, onExit }) {
+  return (
+    <header
+      className="sticky top-0 z-10 px-4 py-3"
+      style={{ background: "rgba(14,17,22,0.94)", borderBottom: `1px solid ${T.line}`, backdropFilter: "blur(6px)" }}
+    >
+      <div className="flex items-center justify-between max-w-md lg:max-w-4xl mx-auto">
+      <div>
+        <div className="text-lg leading-none" style={{ color: T.ivory, fontFamily: "Marcellus, serif" }}>
+          Lux<span style={{ color: T.gold }}>Way</span>
+        </div>
+        <div
+          className="text-xs mt-1 uppercase tracking-widest"
+          style={{ color: T.muted, fontFamily: "Jost, sans-serif" }}
+        >
+          {subtitle}
+        </div>
+      </div>
+      <button
+        onClick={onExit}
+        className="text-xs px-3 py-1.5 rounded-lg"
+        style={{ color: T.muted, border: `1px solid ${T.line}`, fontFamily: "Jost, sans-serif" }}
+      >
+        Esci
+      </button>
+      </div>
+    </header>
+  );
+}
+
+/* ---------- login ---------- */
+
+function Login({ onEnter }) {
+  const [hotelId, setHotelId] = useState(HOTELS[0].id);
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center px-6 py-10" style={{ background: T.bg }}>
+      <div className="w-full max-w-sm lg:max-w-3xl text-center">
+        <div
+          className="mx-auto mb-5 w-16 h-16 rounded-full flex items-center justify-center text-2xl"
+          style={{ border: `1px solid ${T.gold}`, color: T.gold, fontFamily: "Marcellus, serif" }}
+        >
+          LW
+        </div>
+        <h1 className="text-3xl mb-1" style={{ color: T.ivory, fontFamily: "Marcellus, serif" }}>
+          Lux<span style={{ color: T.gold }}>Way</span>
+        </h1>
+        <p
+          className="text-xs uppercase tracking-widest mb-10"
+          style={{ color: T.muted, fontFamily: "Jost, sans-serif" }}
+        >
+          Private transfer · Servizio NCC
+        </p>
+
+        <div className="grid gap-4 lg:grid-cols-2 text-left items-stretch">
+          <div
+            className="rounded-xl p-4"
+            style={{ background: T.surface, border: `1px solid ${T.line}` }}
+          >
+            <div className="text-sm mb-3" style={{ color: T.ivory, fontFamily: "Marcellus, serif" }}>
+              Reception Hotel
+            </div>
+            <select
+              value={hotelId}
+              onChange={(e) => setHotelId(e.target.value)}
+              className="w-full rounded-lg px-3 py-2 text-sm mb-3 outline-none"
+              style={inputStyle}
+            >
+              {HOTELS.map((h) => (
+                <option key={h.id} value={h.id}>{h.name}</option>
+              ))}
+            </select>
+            <button
+              onClick={() => onEnter("hotel", hotelId)}
+              className="w-full py-2.5 rounded-lg text-sm font-medium"
+              style={{ background: T.gold, color: "#14110A", fontFamily: "Jost, sans-serif" }}
+            >
+              Accedi come hotel
+            </button>
+          </div>
+
+          <div
+            className="rounded-xl p-4 flex flex-col"
+            style={{ background: T.surface, border: `1px solid ${T.line}` }}
+          >
+            <div className="text-sm mb-1" style={{ color: T.ivory, fontFamily: "Marcellus, serif" }}>
+              Pannello Operatore
+            </div>
+            <div className="text-xs mb-3" style={{ color: T.muted, fontFamily: "Jost, sans-serif" }}>
+              Accesso riservato · Carlos
+            </div>
+            <button
+              onClick={() => onEnter("admin")}
+              className="w-full py-2.5 rounded-lg text-sm font-medium mt-auto"
+              style={{
+                background: "transparent", color: T.gold,
+                border: `1px solid ${T.gold}`, fontFamily: "Jost, sans-serif",
+              }}
+            >
+              Entra nel pannello
+            </button>
+          </div>
+        </div>
+
+        <p className="mt-8 text-xs" style={{ color: T.muted, fontFamily: "Jost, sans-serif" }}>
+          Versione dimostrativa — dati di esempio
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- hotel panel ---------- */
+
+function HotelPanel({ hotel, rides, onNewRide, onExit }) {
+  const [tab, setTab] = useState("nuova");
+  const empty = {
+    client: "", date: "2026-07-11", time: "", pickup: hotelLabel(hotel),
+    dropoff: "", pax: 2, flight: "", notes: "",
+  };
+  const [form, setForm] = useState(empty);
+  const [sent, setSent] = useState(false);
+
+  const quickOptions = [hotelLabel(hotel), ...PLACES.map((p) => p.label)];
+  const suggested = routePrice(form.pickup, form.dropoff);
+
+  const mine = rides.filter((r) => r.hotelId === hotel.id);
+  const completed = mine.filter((r) => r.status === "completata");
+  const earned = completed.length * HOTEL_FEE;
+  const pending = mine.filter((r) => r.status === "confermata").length * HOTEL_FEE;
+
+  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+  const valid = form.client && form.date && form.time && form.pickup && form.dropoff;
+
+  const submit = () => {
+    if (!valid) return;
+    onNewRide({ ...form, pax: Number(form.pax) || 1, hotelId: hotel.id, price: suggested });
+    setForm(empty);
+    setSent(true);
+    setTimeout(() => setSent(false), 2600);
+  };
+
+  const tabs = [
+    ["nuova", "Nuova corsa"],
+    ["corse", `Le mie corse (${mine.length})`],
+    ["guadagni", "Guadagni"],
+  ];
+
+  return (
+    <div className="min-h-screen pb-24" style={{ background: T.bg }}>
+      <Header subtitle={hotel.name} onExit={onExit} />
+      <WhatsAppWidget contextName={hotel.name} />
+
+      <nav className="flex gap-2 px-4 pt-4 pb-2 overflow-x-auto max-w-md lg:max-w-4xl mx-auto">
+        {tabs.map(([k, label]) => (
+          <button
+            key={k}
+            onClick={() => setTab(k)}
+            className="px-3 py-1.5 rounded-full text-xs whitespace-nowrap"
+            style={{
+              fontFamily: "Jost, sans-serif",
+              background: tab === k ? T.goldSoft : "transparent",
+              color: tab === k ? T.gold : T.muted,
+              border: `1px solid ${tab === k ? T.gold : T.line}`,
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+
+      {tab === "nuova" && (
+        <section className="px-4 pt-3 max-w-md lg:max-w-2xl mx-auto">
+          <div
+            className="rounded-xl p-4 space-y-3"
+            style={{ background: T.surface, border: `1px solid ${T.line}` }}
+          >
+            <Field label="Ospite">
+              <Input value={form.client} onChange={set("client")} placeholder="Nome dell'ospite" />
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Data">
+                <Input type="date" value={form.date} onChange={set("date")} />
+              </Field>
+              <Field label="Ora">
+                <Input type="time" value={form.time} onChange={set("time")} />
+              </Field>
+            </div>
+            <Field label="Partenza">
+              <Input value={form.pickup} onChange={set("pickup")} />
+              <Chips options={quickOptions} onPick={(o) => setForm({ ...form, pickup: o })} />
+            </Field>
+            <Field label="Destinazione">
+              <Input value={form.dropoff} onChange={set("dropoff")} placeholder="Scegli sotto o scrivi l'indirizzo" />
+              <Chips options={quickOptions} onPick={(o) => setForm({ ...form, dropoff: o })} />
+            </Field>
+            {suggested > 0 && (
+              <div
+                className="text-xs rounded-lg px-3 py-2 flex justify-between items-center"
+                style={{ background: T.goldSoft, color: T.gold, fontFamily: "Jost, sans-serif" }}
+              >
+                <span>Tariffa standard tratta</span>
+                <span className="text-sm" style={{ fontFamily: "Marcellus, serif" }}>{eur(suggested)}</span>
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Passeggeri">
+                <Input type="number" min="1" max="8" value={form.pax} onChange={set("pax")} />
+              </Field>
+              <Field label="Volo (opzionale)">
+                <Input value={form.flight} onChange={set("flight")} placeholder="Es. AZ 1734" />
+              </Field>
+            </div>
+            <Field label="Note per l'autista">
+              <Input value={form.notes} onChange={set("notes")} placeholder="Bagagli, seggiolino, richieste…" />
+            </Field>
+            <button
+              onClick={submit}
+              disabled={!valid}
+              className="w-full py-2.5 rounded-lg text-sm font-medium"
+              style={{
+                background: valid ? T.gold : T.surface2,
+                color: valid ? "#14110A" : T.muted,
+                fontFamily: "Jost, sans-serif",
+              }}
+            >
+              Invia richiesta a LuxWay
+            </button>
+            {sent && (
+              <div
+                className="text-xs text-center rounded-lg py-2"
+                style={{ color: T.green, background: T.greenSoft, fontFamily: "Jost, sans-serif" }}
+              >
+                Richiesta inviata — Carlos riceve la notifica e conferma a breve.
+              </div>
+            )}
+          </div>
+          <p className="text-xs mt-3 text-center" style={{ color: T.muted, fontFamily: "Jost, sans-serif" }}>
+            Per ogni corsa completata l'hotel guadagna {eur(HOTEL_FEE)} di commissione.
+          </p>
+        </section>
+      )}
+
+      {tab === "corse" && (
+        <section className="px-4 pt-3 max-w-md lg:max-w-4xl mx-auto grid gap-3 lg:grid-cols-2 items-start">
+          {mine.length === 0 && (
+            <p className="text-sm text-center py-10 lg:col-span-2" style={{ color: T.muted, fontFamily: "Jost, sans-serif" }}>
+              Nessuna corsa ancora. Inserisci la prima dalla scheda “Nuova corsa”.
+            </p>
+          )}
+          {[...mine].reverse().map((r) => (
+            <RideTicket key={r.id} ride={r} />
+          ))}
+        </section>
+      )}
+
+      {tab === "guadagni" && (
+        <section className="px-4 pt-3 max-w-md lg:max-w-2xl mx-auto">
+          <div className="flex gap-3 mb-4">
+            <Stat label="Maturato" value={eur(earned)} accent={T.green} />
+            <Stat label="In arrivo" value={eur(pending)} accent={T.gold} />
+          </div>
+          <div
+            className="rounded-xl p-4"
+            style={{ background: T.surface, border: `1px solid ${T.line}` }}
+          >
+            <div
+              className="text-xs uppercase tracking-widest mb-3"
+              style={{ color: T.muted, fontFamily: "Jost, sans-serif" }}
+            >
+              Dettaglio corse completate
+            </div>
+            {completed.length === 0 && (
+              <p className="text-sm" style={{ color: T.muted, fontFamily: "Jost, sans-serif" }}>
+                Le commissioni compaiono qui quando una corsa viene completata.
+              </p>
+            )}
+            {completed.map((r) => (
+              <div
+                key={r.id}
+                className="flex justify-between items-center py-2 text-sm"
+                style={{ borderBottom: `1px dashed ${T.line}`, fontFamily: "Jost, sans-serif" }}
+              >
+                <span style={{ color: T.ivory }}>{r.code} · {dateIT(r.date)}</span>
+                <span style={{ color: T.green }}>+ {eur(HOTEL_FEE)}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
+
+/* ---------- admin (Carlos) panel ---------- */
+
+function AdminPanel({ rides, onUpdate, onExit }) {
+  const [tab, setTab] = useState("richieste");
+
+  const byStatus = (s) => rides.filter((r) => r.status === s);
+  const requests = byStatus("richiesta");
+  const planned = byStatus("confermata");
+  const done = byStatus("completata");
+
+  const revenue = done.reduce((s, r) => s + r.price, 0);
+  const hotelDue = done.length * HOTEL_FEE;
+  const platformDue = done.length * PLATFORM_FEE;
+  const net = revenue - hotelDue - platformDue;
+
+  const tabs = [
+    ["richieste", `Richieste (${requests.length})`],
+    ["programma", `In programma (${planned.length})`],
+    ["storico", `Completate (${done.length})`],
+    ["conti", "Conti"],
+  ];
+
+  return (
+    <div className="min-h-screen pb-24" style={{ background: T.bg }}>
+      <Header subtitle="Pannello operatore · Carlos" onExit={onExit} />
+      <WhatsAppWidget contextName="Pannello operatore" />
+
+      <div className="flex gap-3 px-4 pt-4 max-w-md lg:max-w-4xl mx-auto">
+        <Stat label="Oggi" value={`${rides.filter((r) => r.date === "2026-07-10" && r.status !== "rifiutata").length} corse`} />
+        <Stat label="Da confermare" value={requests.length} accent={T.gold} />
+        <Stat label="Incasso" value={eur(revenue)} accent={T.green} />
+      </div>
+
+      <nav className="flex gap-2 px-4 pt-4 pb-2 overflow-x-auto max-w-md lg:max-w-4xl mx-auto">
+        {tabs.map(([k, label]) => (
+          <button
+            key={k}
+            onClick={() => setTab(k)}
+            className="px-3 py-1.5 rounded-full text-xs whitespace-nowrap"
+            style={{
+              fontFamily: "Jost, sans-serif",
+              background: tab === k ? T.goldSoft : "transparent",
+              color: tab === k ? T.gold : T.muted,
+              border: `1px solid ${tab === k ? T.gold : T.line}`,
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+
+      {tab === "richieste" && (
+        <section className="px-4 pt-2 max-w-md lg:max-w-4xl mx-auto grid gap-3 lg:grid-cols-2 items-start">
+          {requests.length === 0 && (
+            <p className="text-sm text-center py-10 lg:col-span-2" style={{ color: T.muted, fontFamily: "Jost, sans-serif" }}>
+              Nessuna richiesta in attesa. Tutto sotto controllo.
+            </p>
+          )}
+          {requests.map((r) => (
+            <RequestCard key={r.id} ride={r} onUpdate={onUpdate} />
+          ))}
+        </section>
+      )}
+
+      {tab === "programma" && (
+        <section className="px-4 pt-2 max-w-md lg:max-w-4xl mx-auto grid gap-3 lg:grid-cols-2 items-start">
+          {planned.length === 0 && (
+            <p className="text-sm text-center py-10 lg:col-span-2" style={{ color: T.muted, fontFamily: "Jost, sans-serif" }}>
+              Nessuna corsa in programma.
+            </p>
+          )}
+          {planned.map((r) => (
+            <RideTicket key={r.id} ride={r} hotel={HOTELS.find((h) => h.id === r.hotelId)} showHotel>
+              <button
+                onClick={() => onUpdate(r.id, { status: "completata" })}
+                className="mt-3 w-full py-2 rounded-lg text-xs font-medium"
+                style={{ background: T.greenSoft, color: T.green, border: `1px solid ${T.green}`, fontFamily: "Jost, sans-serif" }}
+              >
+                Segna come completata
+              </button>
+            </RideTicket>
+          ))}
+        </section>
+      )}
+
+      {tab === "storico" && (
+        <section className="px-4 pt-2 max-w-md lg:max-w-4xl mx-auto grid gap-3 lg:grid-cols-2 items-start">
+          {done.length === 0 && (
+            <p className="text-sm text-center py-10 lg:col-span-2" style={{ color: T.muted, fontFamily: "Jost, sans-serif" }}>
+              Ancora nessuna corsa completata.
+            </p>
+          )}
+          {done.map((r) => (
+            <RideTicket key={r.id} ride={r} hotel={HOTELS.find((h) => h.id === r.hotelId)} showHotel />
+          ))}
+        </section>
+      )}
+
+      {tab === "conti" && (
+        <section className="px-4 pt-2 max-w-md lg:max-w-4xl mx-auto lg:grid lg:grid-cols-2 lg:gap-4 lg:items-start">
+          <div
+            className="rounded-xl p-4 space-y-3"
+            style={{ background: T.surface, border: `1px solid ${T.line}`, fontFamily: "Jost, sans-serif" }}
+          >
+            <Row label="Incasso corse completate" value={eur(revenue)} color={T.ivory} />
+            <Row label={`Commissioni hotel (${eur(HOTEL_FEE)} / corsa)`} value={`− ${eur(hotelDue)}`} color={T.red} />
+            <Row label={`Quota piattaforma LuxWay (${eur(PLATFORM_FEE)} / corsa)`} value={`− ${eur(platformDue)}`} color={T.red} />
+            <div style={{ borderTop: `1px dashed ${T.line}` }} className="pt-3">
+              <Row label="Netto Carlos" value={eur(net)} color={T.green} big />
+            </div>
+          </div>
+          <div
+            className="rounded-xl p-4 mt-4 lg:mt-0"
+            style={{ background: T.surface, border: `1px solid ${T.line}` }}
+          >
+            <div className="text-xs uppercase tracking-widest mb-3" style={{ color: T.muted, fontFamily: "Jost, sans-serif" }}>
+              Commissioni per hotel
+            </div>
+            {HOTELS.map((h) => {
+              const n = done.filter((r) => r.hotelId === h.id).length;
+              const tot = n * HOTEL_FEE;
+              return (
+                <div
+                  key={h.id}
+                  className="flex justify-between py-2 text-sm"
+                  style={{ borderBottom: `1px dashed ${T.line}`, fontFamily: "Jost, sans-serif" }}
+                >
+                  <span style={{ color: T.ivory }}>{h.name} · {n} {n === 1 ? "corsa" : "corse"}</span>
+                  <span style={{ color: T.gold }}>{eur(tot)}</span>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
+
+function Row({ label, value, color, big }) {
+  return (
+    <div className="flex justify-between items-baseline gap-3">
+      <span className="text-sm" style={{ color: T.muted }}>{label}</span>
+      <span
+        className={big ? "text-xl" : "text-sm"}
+        style={{ color, fontFamily: big ? "Marcellus, serif" : "Jost, sans-serif" }}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function RequestCard({ ride, onUpdate }) {
+  const [price, setPrice] = useState(ride.price > 0 ? ride.price : routePrice(ride.pickup, ride.dropoff) || "");
+  const [driver, setDriver] = useState(ride.driver || DRIVERS[0]);
+  const hotel = HOTELS.find((h) => h.id === ride.hotelId);
+  const canConfirm = Number(price) > 0;
+
+  return (
+    <RideTicket ride={ride} hotel={hotel} showHotel>
+      <div className="mt-3 grid grid-cols-2 gap-3">
+        <Field label="Prezzo (€)">
+          <Input
+            type="number" min="0" value={price}
+            onChange={(e) => setPrice(e.target.value)}
+            placeholder="Es. 60"
+          />
+        </Field>
+        <Field label="Autista">
+          <select
+            value={driver}
+            onChange={(e) => setDriver(e.target.value)}
+            className="w-full rounded-lg px-3 py-2 text-sm outline-none"
+            style={inputStyle}
+          >
+            {DRIVERS.map((d) => (
+              <option key={d} value={d}>{d}</option>
+            ))}
+          </select>
+        </Field>
+      </div>
+      <div className="mt-3 flex gap-2">
+        <button
+          onClick={() => canConfirm && onUpdate(ride.id, { status: "confermata", price: Number(price), driver })}
+          disabled={!canConfirm}
+          className="flex-1 py-2 rounded-lg text-xs font-medium"
+          style={{
+            background: canConfirm ? T.gold : T.surface2,
+            color: canConfirm ? "#14110A" : T.muted,
+            fontFamily: "Jost, sans-serif",
+          }}
+        >
+          Conferma corsa
+        </button>
+        <button
+          onClick={() => onUpdate(ride.id, { status: "rifiutata" })}
+          className="px-4 py-2 rounded-lg text-xs"
+          style={{ color: T.red, border: `1px solid ${T.red}`, fontFamily: "Jost, sans-serif" }}
+        >
+          Rifiuta
+        </button>
+      </div>
+    </RideTicket>
+  );
+}
+
+/* ---------- app ---------- */
+
+function LuxWayApp() {
+  const [view, setView] = useState("login"); // login | hotel | admin
+  const [hotelId, setHotelId] = useState(HOTELS[0].id);
+  const [rides, setRides] = useState(SEED_RIDES);
+  const [nextId, setNextId] = useState(1046);
+
+  const hotel = useMemo(() => HOTELS.find((h) => h.id === hotelId), [hotelId]);
+
+  const addRide = (data) => {
+    setRides((rs) => [
+      ...rs,
+      { ...data, id: nextId, code: `LW-${nextId}`, status: "richiesta", driver: "" },
+    ]);
+    setNextId((n) => n + 1);
+  };
+
+  const updateRide = (id, patch) =>
+    setRides((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+
+  const enter = (role, hid) => {
+    if (hid) setHotelId(hid);
+    setView(role);
+  };
+
+  return (
+    <>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@300;400;500;600&display=swap');
+        * { box-sizing: border-box; }
+        body { margin: 0; }
+        input[type="date"]::-webkit-calendar-picker-indicator,
+        input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(0.7); }
+        select option { background: ${T.surface2}; color: ${T.ivory}; }
+        button { cursor: pointer; transition: opacity .15s ease; }
+        button:hover:not(:disabled) { opacity: .88; }
+        button:disabled { cursor: default; }
+        :focus-visible { outline: 2px solid ${T.gold}; outline-offset: 2px; }
+        @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+      `}</style>
+      {view === "login" && <Login onEnter={enter} />}
+      {view === "hotel" && hotel && (
+        <HotelPanel
+          hotel={hotel}
+          rides={rides}
+          onNewRide={addRide}
+          onExit={() => setView("login")}
+        />
+      )}
+      {view === "admin" && (
+        <AdminPanel rides={rides} onUpdate={updateRide} onExit={() => setView("login")} />
+      )}
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<LuxWayApp />);
+</script>
+</body>
+</html>
