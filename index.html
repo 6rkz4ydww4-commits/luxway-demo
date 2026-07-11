@@ -4,7 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex">
+<meta name="theme-color" content="#0E1116">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="LuxWay">
 <title>LuxWay — Private Transfer · Roma</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='29' fill='%230E1116' stroke='%23C7A566' stroke-width='3'/%3E%3Ctext x='32' y='41' font-family='Georgia,serif' font-size='24' fill='%23C7A566' text-anchor='middle'%3ELW%3C/text%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="icon.png">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
@@ -72,46 +78,69 @@ const routePrice = (pickup, dropoff) => {
   return 0;
 };
 
-const DRIVERS = ["Carlos", "Ari", "Marco R.", "Salvatore P.", "Denis K."];
+const DRIVERS = [
+  { name: "Carlos", phone: "+39 329 093 7951" },
+  { name: "Ari", phone: "+39 320 378 7946" },
+  { name: "Marco R.", phone: "+39 340 000 0003" },
+  { name: "Salvatore P.", phone: "+39 340 000 0004" },
+  { name: "Denis K.", phone: "+39 340 000 0005" },
+];
+
+const driverPhone = (name) => {
+  const d = DRIVERS.find((x) => x.name === name);
+  return d ? d.phone : "";
+};
 
 const SEED_RIDES = [
   {
-    id: 1, code: "LW-1041", hotelId: "h1", client: "Sig. Andersen",
-    date: "2026-07-10", time: "09:30", pickup: "Grand Hotel Riviera — Via Veneto 12, Roma",
+    id: 1, code: "LW-1041", hotelId: "h1", client: "Sig. Andersen", clientPhone: "+45 20 12 34 56",
+    date: TODAY, time: "09:30", pickup: "Grand Hotel Riviera — Via Veneto 12, Roma",
     dropoff: "Aeroporto di Fiumicino (FCO)", pax: 2, flight: "AZ 1734",
     notes: "2 valigie grandi", price: 70, status: "completata", driver: "Carlos",
   },
   {
-    id: 2, code: "LW-1042", hotelId: "h2", client: "Fam. Dubois",
-    date: "2026-07-10", time: "14:15", pickup: "Aeroporto di Ciampino (CIA)",
+    id: 2, code: "LW-1042", hotelId: "h2", client: "Fam. Dubois", clientPhone: "+33 6 12 34 56 78",
+    date: TODAY, time: "14:15", pickup: "Aeroporto di Ciampino (CIA)",
     dropoff: "Palazzo Aurora — Piazza Navona 8, Roma", pax: 4, flight: "FR 1226",
     notes: "Seggiolino bambino", price: 70, status: "confermata", driver: "Marco R.",
   },
   {
-    id: 3, code: "LW-1043", hotelId: "h1", client: "Sig.ra Keller",
-    date: "2026-07-11", time: "08:00", pickup: "Grand Hotel Riviera",
+    id: 3, code: "LW-1043", hotelId: "h1", client: "Sig.ra Keller", clientPhone: "+49 171 234 5678",
+    date: TOMORROW, time: "08:00", pickup: "Grand Hotel Riviera",
     dropoff: "Stazione Centrale", pax: 1, flight: "",
     notes: "", price: 45, status: "richiesta", driver: "",
   },
   {
-    id: 4, code: "LW-1044", hotelId: "h3", client: "Mr. & Mrs. Ito",
-    date: "2026-07-11", time: "18:45", pickup: "Boutique Hotel Bellavista",
+    id: 4, code: "LW-1044", hotelId: "h3", client: "Mr. & Mrs. Ito", clientPhone: "+81 90 1234 5678",
+    date: TOMORROW, time: "18:45", pickup: "Boutique Hotel Bellavista",
     dropoff: "Ristorante La Terrazza", pax: 2, flight: "",
     notes: "Ritorno ore 23:00 da concordare", price: 0, status: "richiesta", driver: "",
   },
   {
-    id: 5, code: "LW-1045", hotelId: "h4", client: "Sig.ra Novak",
-    date: "2026-07-11", time: "06:15", pickup: "Domus Liberius — Via Liberiana 17, Roma",
+    id: 5, code: "LW-1045", hotelId: "h4", client: "Sig.ra Novak", clientPhone: "+41 79 123 45 67",
+    date: TOMORROW, time: "06:15", pickup: "Domus Liberius — Via Liberiana 17, Roma",
     dropoff: "Aeroporto di Fiumicino (FCO)", pax: 2, flight: "LH 233",
     notes: "Partenza presto, colazione al sacco", price: 70, status: "richiesta", driver: "",
   },
 ];
+
+/* Date dinamiche: la demo è sempre "fresca" qualunque giorno la apri */
+const _d = (offset) => {
+  const d = new Date();
+  d.setDate(d.getDate() + offset);
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+};
+const TODAY = _d(0);
+const TOMORROW = _d(1);
 
 const eur = (n) =>
   new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(n || 0);
 
 const dateIT = (iso) => {
   if (!iso) return "";
+  if (iso === TODAY) return "Oggi";
+  if (iso === TOMORROW) return "Domani";
   const [y, m, d] = iso.split("-");
   return `${d}/${m}/${y}`;
 };
@@ -255,7 +284,25 @@ function RideTicket({ ride, hotel, children, showHotel }) {
           <span>{dateIT(ride.date)} · ore {ride.time}</span>
           <span>{ride.pax} pax</span>
           {ride.flight ? <span>Volo {ride.flight}</span> : null}
-          {ride.driver ? <span style={{ color: T.blue }}>Autista: {ride.driver}</span> : null}
+          {ride.clientPhone ? (
+            <a href={`tel:${ride.clientPhone.replace(/\s/g, "")}`} className="no-underline" style={{ color: T.ivory }}>
+              ☏ Ospite {ride.clientPhone}
+            </a>
+          ) : null}
+          {ride.driver ? (
+            <span style={{ color: T.blue }}>
+              Autista: {ride.driver}
+              {driverPhone(ride.driver) ? (
+                <a
+                  href={`tel:${driverPhone(ride.driver).replace(/\s/g, "")}`}
+                  className="no-underline"
+                  style={{ color: T.blue }}
+                >
+                  {" · ☏ "}{driverPhone(ride.driver)}
+                </a>
+              ) : null}
+            </span>
+          ) : null}
           {ride.price > 0 ? (
             <span style={{ color: T.gold }}>{eur(ride.price)}</span>
           ) : (
@@ -354,6 +401,31 @@ function Header({ subtitle, onExit }) {
 
 function Login({ onEnter }) {
   const [hotelId, setHotelId] = useState(HOTELS[0].id);
+  const [hotelPwd, setHotelPwd] = useState("");
+  const [opUser, setOpUser] = useState("");
+  const [opPwd, setOpPwd] = useState("");
+  const [err, setErr] = useState("");
+
+  const tryHotel = () => {
+    if (hotelPwd.trim().toLowerCase() === "hotel2026") {
+      setErr("");
+      onEnter("hotel", hotelId);
+    } else setErr("hotel");
+  };
+
+  const tryOp = () => {
+    if (opUser.trim().toLowerCase() === "carlos" && opPwd.trim() === "luxway2026") {
+      setErr("");
+      onEnter("admin");
+    } else setErr("admin");
+  };
+
+  const ErrMsg = () => (
+    <div className="text-xs mt-2 text-center" style={{ color: T.red, fontFamily: "Jost, sans-serif" }}>
+      Credenziali non valide. Riprova.
+    </div>
+  );
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-6 py-10" style={{ background: T.bg }}>
       <div className="w-full max-w-sm lg:max-w-3xl text-center">
@@ -391,13 +463,23 @@ function Login({ onEnter }) {
                 <option key={h.id} value={h.id}>{h.name}</option>
               ))}
             </select>
+            <Input
+              type="password"
+              value={hotelPwd}
+              onChange={(e) => setHotelPwd(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && tryHotel()}
+              placeholder="Password struttura"
+              className="mb-3"
+              autoComplete="off"
+            />
             <button
-              onClick={() => onEnter("hotel", hotelId)}
+              onClick={tryHotel}
               className="w-full py-2.5 rounded-lg text-sm font-medium"
               style={{ background: T.gold, color: "#14110A", fontFamily: "Jost, sans-serif" }}
             >
               Accedi come hotel
             </button>
+            {err === "hotel" && <ErrMsg />}
           </div>
 
           <div
@@ -408,10 +490,26 @@ function Login({ onEnter }) {
               Pannello Operatore
             </div>
             <div className="text-xs mb-3" style={{ color: T.muted, fontFamily: "Jost, sans-serif" }}>
-              Accesso riservato · Carlos
+              Accesso riservato
             </div>
+            <Input
+              value={opUser}
+              onChange={(e) => setOpUser(e.target.value)}
+              placeholder="Nome utente"
+              className="mb-3"
+              autoComplete="off"
+            />
+            <Input
+              type="password"
+              value={opPwd}
+              onChange={(e) => setOpPwd(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && tryOp()}
+              placeholder="Password"
+              className="mb-3"
+              autoComplete="off"
+            />
             <button
-              onClick={() => onEnter("admin")}
+              onClick={tryOp}
               className="w-full py-2.5 rounded-lg text-sm font-medium mt-auto"
               style={{
                 background: "transparent", color: T.gold,
@@ -420,6 +518,7 @@ function Login({ onEnter }) {
             >
               Entra nel pannello
             </button>
+            {err === "admin" && <ErrMsg />}
           </div>
         </div>
 
@@ -436,7 +535,7 @@ function Login({ onEnter }) {
 function HotelPanel({ hotel, rides, onNewRide, onExit }) {
   const [tab, setTab] = useState("nuova");
   const empty = {
-    client: "", date: "2026-07-11", time: "", pickup: hotelLabel(hotel),
+    client: "", phone: "", date: TODAY, time: "", pickup: hotelLabel(hotel),
     dropoff: "", pax: 2, flight: "", notes: "",
   };
   const [form, setForm] = useState(empty);
@@ -451,14 +550,14 @@ function HotelPanel({ hotel, rides, onNewRide, onExit }) {
   const pending = mine.filter((r) => r.status === "confermata").length * HOTEL_FEE;
 
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
-  const valid = form.client && form.date && form.time && form.pickup && form.dropoff;
+  const valid = form.client && form.phone && form.date && form.time && form.pickup && form.dropoff;
 
   const submit = () => {
     if (!valid) return;
-    onNewRide({ ...form, pax: Number(form.pax) || 1, hotelId: hotel.id, price: suggested });
+    onNewRide({ ...form, clientPhone: form.phone, pax: Number(form.pax) || 1, hotelId: hotel.id, price: suggested });
     setForm(empty);
     setSent(true);
-    setTimeout(() => setSent(false), 2600);
+    setTimeout(() => setSent(false), 4200);
   };
 
   const tabs = [
@@ -496,9 +595,14 @@ function HotelPanel({ hotel, rides, onNewRide, onExit }) {
             className="rounded-xl p-4 space-y-3"
             style={{ background: T.surface, border: `1px solid ${T.line}` }}
           >
-            <Field label="Ospite">
-              <Input value={form.client} onChange={set("client")} placeholder="Nome dell'ospite" />
-            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Ospite">
+                <Input value={form.client} onChange={set("client")} placeholder="Nome dell'ospite" />
+              </Field>
+              <Field label="Telefono ospite">
+                <Input type="tel" value={form.phone} onChange={set("phone")} placeholder="+39 ..." />
+              </Field>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Data">
                 <Input type="date" value={form.date} onChange={set("date")} />
@@ -549,10 +653,13 @@ function HotelPanel({ hotel, rides, onNewRide, onExit }) {
             </button>
             {sent && (
               <div
-                className="text-xs text-center rounded-lg py-2"
-                style={{ color: T.green, background: T.greenSoft, fontFamily: "Jost, sans-serif" }}
+                className="text-xs rounded-lg py-2.5 px-3"
+                style={{ color: T.green, background: T.greenSoft, border: `1px solid ${T.green}`, fontFamily: "Jost, sans-serif" }}
               >
-                Richiesta inviata — Carlos riceve la notifica e conferma a breve.
+                <div className="font-medium">✓ Richiesta inviata a LuxWay</div>
+                <div className="mt-1" style={{ color: T.gold }}>
+                  📲 Notifica WhatsApp in partenza verso Carlos (simulata in questa demo)
+                </div>
               </div>
             )}
           </div>
@@ -618,10 +725,12 @@ function HotelPanel({ hotel, rides, onNewRide, onExit }) {
 function AdminPanel({ rides, onUpdate, onExit }) {
   const [tab, setTab] = useState("richieste");
 
+  const chrono = (arr) => [...arr].sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
   const byStatus = (s) => rides.filter((r) => r.status === s);
-  const requests = byStatus("richiesta");
-  const planned = byStatus("confermata");
-  const done = byStatus("completata");
+  const requests = chrono(byStatus("richiesta"));
+  const planned = chrono(byStatus("confermata"));
+  const done = chrono(byStatus("completata")).reverse();
+  const rejected = byStatus("rifiutata");
 
   const revenue = done.reduce((s, r) => s + r.price, 0);
   const hotelDue = done.length * HOTEL_FEE;
@@ -632,6 +741,7 @@ function AdminPanel({ rides, onUpdate, onExit }) {
     ["richieste", `Richieste (${requests.length})`],
     ["programma", `In programma (${planned.length})`],
     ["storico", `Completate (${done.length})`],
+    ["rifiutate", `Rifiutate (${rejected.length})`],
     ["conti", "Conti"],
   ];
 
@@ -641,7 +751,7 @@ function AdminPanel({ rides, onUpdate, onExit }) {
       <WhatsAppWidget contextName="Pannello operatore" />
 
       <div className="flex gap-3 px-4 pt-4 max-w-md lg:max-w-4xl mx-auto">
-        <Stat label="Oggi" value={`${rides.filter((r) => r.date === "2026-07-10" && r.status !== "rifiutata").length} corse`} />
+        <Stat label="Oggi" value={`${rides.filter((r) => r.date === TODAY && r.status !== "rifiutata").length} corse`} />
         <Stat label="Da confermare" value={requests.length} accent={T.gold} />
         <Stat label="Incasso" value={eur(revenue)} accent={T.green} />
       </div>
@@ -686,13 +796,22 @@ function AdminPanel({ rides, onUpdate, onExit }) {
           )}
           {planned.map((r) => (
             <RideTicket key={r.id} ride={r} hotel={HOTELS.find((h) => h.id === r.hotelId)} showHotel>
-              <button
-                onClick={() => onUpdate(r.id, { status: "completata" })}
-                className="mt-3 w-full py-2 rounded-lg text-xs font-medium"
-                style={{ background: T.greenSoft, color: T.green, border: `1px solid ${T.green}`, fontFamily: "Jost, sans-serif" }}
-              >
-                Segna come completata
-              </button>
+              <div className="mt-3 flex gap-2">
+                <button
+                  onClick={() => onUpdate(r.id, { status: "completata" })}
+                  className="flex-1 py-2 rounded-lg text-xs font-medium"
+                  style={{ background: T.greenSoft, color: T.green, border: `1px solid ${T.green}`, fontFamily: "Jost, sans-serif" }}
+                >
+                  Segna come completata
+                </button>
+                <button
+                  onClick={() => onUpdate(r.id, { status: "richiesta" })}
+                  className="px-3 py-2 rounded-lg text-xs"
+                  style={{ color: T.muted, border: `1px solid ${T.line}`, fontFamily: "Jost, sans-serif" }}
+                >
+                  Annulla conferma
+                </button>
+              </div>
             </RideTicket>
           ))}
         </section>
@@ -706,7 +825,36 @@ function AdminPanel({ rides, onUpdate, onExit }) {
             </p>
           )}
           {done.map((r) => (
-            <RideTicket key={r.id} ride={r} hotel={HOTELS.find((h) => h.id === r.hotelId)} showHotel />
+            <RideTicket key={r.id} ride={r} hotel={HOTELS.find((h) => h.id === r.hotelId)} showHotel>
+              <button
+                onClick={() => onUpdate(r.id, { status: "confermata" })}
+                className="mt-3 py-1.5 px-3 rounded-lg text-xs"
+                style={{ color: T.muted, border: `1px solid ${T.line}`, fontFamily: "Jost, sans-serif" }}
+              >
+                ↩ Riporta in programma
+              </button>
+            </RideTicket>
+          ))}
+        </section>
+      )}
+
+      {tab === "rifiutate" && (
+        <section className="px-4 pt-2 max-w-md lg:max-w-4xl mx-auto grid gap-3 lg:grid-cols-2 items-start">
+          {rejected.length === 0 && (
+            <p className="text-sm text-center py-10 lg:col-span-2" style={{ color: T.muted, fontFamily: "Jost, sans-serif" }}>
+              Nessuna corsa rifiutata.
+            </p>
+          )}
+          {rejected.map((r) => (
+            <RideTicket key={r.id} ride={r} hotel={HOTELS.find((h) => h.id === r.hotelId)} showHotel>
+              <button
+                onClick={() => onUpdate(r.id, { status: "richiesta" })}
+                className="mt-3 py-1.5 px-3 rounded-lg text-xs"
+                style={{ color: T.gold, border: `1px solid ${T.gold}`, fontFamily: "Jost, sans-serif" }}
+              >
+                ↩ Ripristina come richiesta
+              </button>
+            </RideTicket>
           ))}
         </section>
       )}
@@ -768,7 +916,7 @@ function Row({ label, value, color, big }) {
 
 function RequestCard({ ride, onUpdate }) {
   const [price, setPrice] = useState(ride.price > 0 ? ride.price : routePrice(ride.pickup, ride.dropoff) || "");
-  const [driver, setDriver] = useState(ride.driver || DRIVERS[0]);
+  const [driver, setDriver] = useState(ride.driver || DRIVERS[0].name);
   const hotel = HOTELS.find((h) => h.id === ride.hotelId);
   const canConfirm = Number(price) > 0;
 
@@ -790,11 +938,16 @@ function RequestCard({ ride, onUpdate }) {
             style={inputStyle}
           >
             {DRIVERS.map((d) => (
-              <option key={d} value={d}>{d}</option>
+              <option key={d.name} value={d.name}>{d.name}</option>
             ))}
           </select>
         </Field>
       </div>
+      {driverPhone(driver) ? (
+        <div className="mt-2 text-xs" style={{ color: T.blue, fontFamily: "Jost, sans-serif" }}>
+          ☏ {driver}: {driverPhone(driver)} — visibile all'hotel dopo la conferma
+        </div>
+      ) : null}
       <div className="mt-3 flex gap-2">
         <button
           onClick={() => canConfirm && onUpdate(ride.id, { status: "confermata", price: Number(price), driver })}
