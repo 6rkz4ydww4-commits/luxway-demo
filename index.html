@@ -18,9 +18,13 @@
 <style>body{margin:0;background:#0E1116}</style>
 <script>
 window.addEventListener("error", function (e) {
+  // Ignora gli errori cross-origin delle librerie esterne ("Script error.")
+  // e mostra solo errori reali del codice dell'app.
+  if (!e.message || e.message === "Script error." || e.message.indexOf("Script error") === 0) return;
+  if (e.filename && e.filename.indexOf(location.host) === -1 && e.filename !== "") return;
   var el = document.createElement("div");
   el.style.cssText = "position:fixed;bottom:0;left:0;right:0;background:#7a2e2e;color:#fff;font:12px monospace;padding:8px 12px;z-index:9999;white-space:pre-wrap";
-  el.textContent = "Errore: " + (e.message || e.error);
+  el.textContent = "Errore: " + e.message + (e.lineno ? " (riga " + e.lineno + ")" : "");
   document.body.appendChild(el);
 });
 </script>
