@@ -50,6 +50,8 @@ const _d = (offset) => {
 const TODAY = _d(0);
 const TOMORROW = _d(1);
 
+const MOD_LOCK_HOURS = 4; // sotto questa soglia la corsa non è modificabile dall'hotel
+
 const T = {
   bg: "#0E1116",
   surface: "#161B23",
@@ -291,6 +293,7 @@ function RideTicket({ ride, hotel, children, showHotel }) {
         >
           <span>{dateIT(ride.date)} · ore {ride.time}</span>
           <span>{ride.pax} pax</span>
+          {ride.modified ? <span style={{ color: T.gold }}>● Modificata dall'hotel</span> : null}
           {ride.flight ? <span>Volo {ride.flight}</span> : null}
           {ride.clientPhone ? (
             <a href={`tel:${ride.clientPhone.replace(/\s/g, "")}`} className="no-underline" style={{ color: T.ivory }}>
@@ -408,35 +411,49 @@ function Header({ subtitle, onExit }) {
 /* ---------- login ---------- */
 
 function Login({ onEnter }) {
-  const [hotelId, setHotelId] = useState(HOTELS[0].id);
+  const [role, setRole] = useState(null); // null | "hotel" | "admin"
+  const [hotelName, setHotelName] = useState("");
   const [hotelPwd, setHotelPwd] = useState("");
   const [opUser, setOpUser] = useState("");
   const [opPwd, setOpPwd] = useState("");
   const [err, setErr] = useState("");
 
+  const back = () => { setErr(""); setHotelPwd(""); setOpPwd(""); setRole(null); };
+
   const tryHotel = () => {
-    if (hotelPwd.trim().toLowerCase() === "hotel2026") {
+    const h = HOTELS.find((x) => x.name.trim().toLowerCase() === hotelName.trim().toLowerCase());
+    if (h && hotelPwd.trim().toLowerCase() === "hotel2026") {
       setErr("");
-      onEnter("hotel", hotelId);
-    } else setErr("hotel");
+      onEnter("hotel", h.id);
+    } else setErr("Credenziali non valide. Riprova.");
   };
 
   const tryOp = () => {
     if (opUser.trim().toLowerCase() === "carlos" && opPwd.trim() === "luxway2026") {
       setErr("");
       onEnter("admin");
-    } else setErr("admin");
+    } else setErr("Credenziali non valide. Riprova.");
   };
 
-  const ErrMsg = () => (
-    <div className="text-xs mt-2 text-center" style={{ color: T.red, fontFamily: "Jost, sans-serif" }}>
-      Credenziali non valide. Riprova.
-    </div>
+  const RoleCard = ({ title, desc, onClick }) => (
+    <button
+      onClick={onClick}
+      className="rounded-xl p-5 text-left w-full"
+      style={{ background: T.surface, border: `1px solid ${T.line}` }}
+    >
+      <div className="text-base mb-1" style={{ color: T.ivory, fontFamily: "Marcellus, serif" }}>
+        {title}
+      </div>
+      <div className="text-xs" style={{ color: T.muted, fontFamily: "Jost, sans-serif" }}>{desc}</div>
+      <div className="text-xs mt-3" style={{ color: T.gold, fontFamily: "Jost, sans-serif" }}>
+        Accedi →
+      </div>
+    </button>
   );
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-6 py-10" style={{ background: T.bg }}>
-      <div className="w-full max-w-sm lg:max-w-3xl text-center">
+      <div className="w-full max-w-sm lg:max-w-2xl text-center">
         <div
           className="mx-auto mb-5 w-16 h-16 rounded-full flex items-center justify-center text-2xl"
           style={{ border: `1px solid ${T.gold}`, color: T.gold, fontFamily: "Marcellus, serif" }}
@@ -453,30 +470,42 @@ function Login({ onEnter }) {
           Private transfer · Servizio NCC
         </p>
 
-        <div className="grid gap-4 lg:grid-cols-2 text-left items-stretch">
+        {role === null && (
+          <div className="grid gap-4 lg:grid-cols-2 text-left">
+            <RoleCard
+              title="Reception Hotel"
+              desc="Inserisci e gestisci le corse dei tuoi ospiti"
+              onClick={() => setRole("hotel")}
+            />
+            <RoleCard
+              title="Pannello Operatore"
+              desc="Accesso riservato all'operatore NCC"
+              onClick={() => setRole("admin")}
+            />
+          </div>
+        )}
+
+        {role === "hotel" && (
           <div
-            className="rounded-xl p-4"
+            className="rounded-xl p-5 text-left max-w-sm mx-auto"
             style={{ background: T.surface, border: `1px solid ${T.line}` }}
           >
-            <div className="text-sm mb-3" style={{ color: T.ivory, fontFamily: "Marcellus, serif" }}>
-              Reception Hotel
+            <div className="text-sm mb-4" style={{ color: T.ivory, fontFamily: "Marcellus, serif" }}>
+              Accesso Reception Hotel
             </div>
-            <select
-              value={hotelId}
-              onChange={(e) => setHotelId(e.target.value)}
-              className="w-full rounded-lg px-3 py-2 text-sm mb-3 outline-none"
-              style={inputStyle}
-            >
-              {HOTELS.map((h) => (
-                <option key={h.id} value={h.id}>{h.name}</option>
-              ))}
-            </select>
+            <Input
+              value={hotelName}
+              onChange={(e) => setHotelName(e.target.value)}
+              placeholder="Nome della struttura"
+              className="mb-3"
+              autoComplete="off"
+            />
             <Input
               type="password"
               value={hotelPwd}
               onChange={(e) => setHotelPwd(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && tryHotel()}
-              placeholder="Password struttura"
+              placeholder="Password"
               className="mb-3"
               autoComplete="off"
             />
@@ -485,20 +514,30 @@ function Login({ onEnter }) {
               className="w-full py-2.5 rounded-lg text-sm font-medium"
               style={{ background: T.gold, color: "#14110A", fontFamily: "Jost, sans-serif" }}
             >
-              Accedi come hotel
+              Accedi
             </button>
-            {err === "hotel" && <ErrMsg />}
+            {err && (
+              <div className="text-xs mt-2 text-center" style={{ color: T.red, fontFamily: "Jost, sans-serif" }}>
+                {err}
+              </div>
+            )}
+            <button
+              onClick={back}
+              className="w-full mt-3 py-2 rounded-lg text-xs"
+              style={{ color: T.muted, border: `1px solid ${T.line}`, fontFamily: "Jost, sans-serif" }}
+            >
+              ← Indietro
+            </button>
           </div>
+        )}
 
+        {role === "admin" && (
           <div
-            className="rounded-xl p-4 flex flex-col"
+            className="rounded-xl p-5 text-left max-w-sm mx-auto"
             style={{ background: T.surface, border: `1px solid ${T.line}` }}
           >
-            <div className="text-sm mb-1" style={{ color: T.ivory, fontFamily: "Marcellus, serif" }}>
-              Pannello Operatore
-            </div>
-            <div className="text-xs mb-3" style={{ color: T.muted, fontFamily: "Jost, sans-serif" }}>
-              Accesso riservato
+            <div className="text-sm mb-4" style={{ color: T.ivory, fontFamily: "Marcellus, serif" }}>
+              Accesso Pannello Operatore
             </div>
             <Input
               value={opUser}
@@ -518,17 +557,25 @@ function Login({ onEnter }) {
             />
             <button
               onClick={tryOp}
-              className="w-full py-2.5 rounded-lg text-sm font-medium mt-auto"
-              style={{
-                background: "transparent", color: T.gold,
-                border: `1px solid ${T.gold}`, fontFamily: "Jost, sans-serif",
-              }}
+              className="w-full py-2.5 rounded-lg text-sm font-medium"
+              style={{ background: T.gold, color: "#14110A", fontFamily: "Jost, sans-serif" }}
             >
               Entra nel pannello
             </button>
-            {err === "admin" && <ErrMsg />}
+            {err && (
+              <div className="text-xs mt-2 text-center" style={{ color: T.red, fontFamily: "Jost, sans-serif" }}>
+                {err}
+              </div>
+            )}
+            <button
+              onClick={back}
+              className="w-full mt-3 py-2 rounded-lg text-xs"
+              style={{ color: T.muted, border: `1px solid ${T.line}`, fontFamily: "Jost, sans-serif" }}
+            >
+              ← Indietro
+            </button>
           </div>
-        </div>
+        )}
 
         <p className="mt-8 text-xs" style={{ color: T.muted, fontFamily: "Jost, sans-serif" }}>
           Versione dimostrativa — dati di esempio
@@ -540,7 +587,7 @@ function Login({ onEnter }) {
 
 /* ---------- hotel panel ---------- */
 
-function HotelPanel({ hotel, rides, onNewRide, onExit }) {
+function HotelPanel({ hotel, rides, onNewRide, onUpdate, onExit }) {
   const [tab, setTab] = useState("nuova");
   const empty = {
     client: "", phone: "", date: TODAY, time: "", pickup: hotelLabel(hotel),
@@ -685,7 +732,7 @@ function HotelPanel({ hotel, rides, onNewRide, onExit }) {
             </p>
           )}
           {[...mine].reverse().map((r) => (
-            <RideTicket key={r.id} ride={r} />
+            <HotelRideCard key={r.id} ride={r} hotel={hotel} onUpdate={onUpdate} />
           ))}
         </section>
       )}
@@ -725,6 +772,136 @@ function HotelPanel({ hotel, rides, onNewRide, onExit }) {
         </section>
       )}
     </div>
+  );
+}
+
+/* ---------- hotel ride card: modifica con blocco a 4 ore ---------- */
+
+function HotelRideCard({ ride, hotel, onUpdate }) {
+  const [editing, setEditing] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [form, setForm] = useState(null);
+
+  const editable = ride.status === "richiesta" || ride.status === "confermata";
+  const target = new Date(`${ride.date}T${ride.time || "00:00"}`);
+  const hoursLeft = (target - new Date()) / 36e5;
+  const locked = hoursLeft <= MOD_LOCK_HOURS;
+  const quickOptions = [hotelLabel(hotel), ...PLACES.map((p) => p.label)];
+
+  const startEdit = () => {
+    setForm({
+      date: ride.date, time: ride.time, pickup: ride.pickup, dropoff: ride.dropoff,
+      pax: ride.pax, flight: ride.flight || "", notes: ride.notes || "", phone: ride.clientPhone || "",
+    });
+    setEditing(true);
+  };
+  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+  const valid = form && form.date && form.time && form.pickup && form.dropoff;
+
+  const save = () => {
+    if (!valid) return;
+    const patch = {
+      date: form.date, time: form.time, pickup: form.pickup, dropoff: form.dropoff,
+      pax: Number(form.pax) || 1, flight: form.flight, notes: form.notes,
+      clientPhone: form.phone, modified: true,
+    };
+    if (ride.status === "richiesta") {
+      const p = routePrice(form.pickup, form.dropoff);
+      if (p > 0) patch.price = p;
+    }
+    onUpdate(ride.id, patch);
+    setEditing(false);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 4200);
+  };
+
+  const waMsg = encodeURIComponent(
+    `Salve Carlos, devo modificare la corsa ${ride.code} (${dateIT(ride.date)} ore ${ride.time}).`
+  );
+
+  return (
+    <RideTicket ride={ride} hotel={hotel}>
+      {editable && !editing && !locked && (
+        <button
+          onClick={startEdit}
+          className="mt-3 py-1.5 px-3 rounded-lg text-xs"
+          style={{ color: T.gold, border: `1px solid ${T.gold}`, fontFamily: "Jost, sans-serif" }}
+        >
+          ✎ Modifica corsa
+        </button>
+      )}
+
+      {editable && !editing && locked && (
+        <div
+          className="mt-3 text-xs rounded-lg p-3"
+          style={{ background: T.goldSoft, color: T.gold, fontFamily: "Jost, sans-serif" }}
+        >
+          ⏱ Mancano meno di {MOD_LOCK_HOURS} ore al servizio: la corsa non è più modificabile da qui.
+          <a
+            href={`https://wa.me/${WHATSAPP_NUMBER}?text=${waMsg}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block text-center mt-2 py-2 rounded-lg no-underline font-medium"
+            style={{ background: "#25D366", color: "#0B141A" }}
+          >
+            Contatta Carlos su WhatsApp
+          </a>
+        </div>
+      )}
+
+      {editing && form && (
+        <div className="mt-3 pt-3 space-y-3" style={{ borderTop: `1px dashed ${T.line}` }}>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Data"><Input type="date" value={form.date} onChange={set("date")} /></Field>
+            <Field label="Ora"><Input type="time" value={form.time} onChange={set("time")} /></Field>
+          </div>
+          <Field label="Partenza">
+            <Input value={form.pickup} onChange={set("pickup")} />
+            <Chips options={quickOptions} onPick={(o) => setForm({ ...form, pickup: o })} />
+          </Field>
+          <Field label="Destinazione">
+            <Input value={form.dropoff} onChange={set("dropoff")} />
+            <Chips options={quickOptions} onPick={(o) => setForm({ ...form, dropoff: o })} />
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Passeggeri"><Input type="number" min="1" max="8" value={form.pax} onChange={set("pax")} /></Field>
+            <Field label="Volo (opzionale)"><Input value={form.flight} onChange={set("flight")} /></Field>
+          </div>
+          <Field label="Telefono ospite"><Input type="tel" value={form.phone} onChange={set("phone")} /></Field>
+          <Field label="Note per l'autista"><Input value={form.notes} onChange={set("notes")} /></Field>
+          <div className="flex gap-2">
+            <button
+              onClick={save}
+              disabled={!valid}
+              className="flex-1 py-2 rounded-lg text-xs font-medium"
+              style={{
+                background: valid ? T.gold : T.surface2,
+                color: valid ? "#14110A" : T.muted,
+                fontFamily: "Jost, sans-serif",
+              }}
+            >
+              Salva modifiche
+            </button>
+            <button
+              onClick={() => setEditing(false)}
+              className="px-3 py-2 rounded-lg text-xs"
+              style={{ color: T.muted, border: `1px solid ${T.line}`, fontFamily: "Jost, sans-serif" }}
+            >
+              Annulla
+            </button>
+          </div>
+        </div>
+      )}
+
+      {saved && (
+        <div
+          className="mt-3 text-xs rounded-lg py-2 px-3"
+          style={{ color: T.green, background: T.greenSoft, fontFamily: "Jost, sans-serif" }}
+        >
+          ✓ Corsa aggiornata · 📲 Notifica WhatsApp a Carlos (simulata in questa demo)
+        </div>
+      )}
+    </RideTicket>
   );
 }
 
@@ -806,7 +983,7 @@ function AdminPanel({ rides, onUpdate, onExit }) {
             <RideTicket key={r.id} ride={r} hotel={HOTELS.find((h) => h.id === r.hotelId)} showHotel>
               <div className="mt-3 flex gap-2">
                 <button
-                  onClick={() => onUpdate(r.id, { status: "completata" })}
+                  onClick={() => onUpdate(r.id, { status: "completata", modified: false })}
                   className="flex-1 py-2 rounded-lg text-xs font-medium"
                   style={{ background: T.greenSoft, color: T.green, border: `1px solid ${T.green}`, fontFamily: "Jost, sans-serif" }}
                 >
@@ -958,7 +1135,7 @@ function RequestCard({ ride, onUpdate }) {
       ) : null}
       <div className="mt-3 flex gap-2">
         <button
-          onClick={() => canConfirm && onUpdate(ride.id, { status: "confermata", price: Number(price), driver })}
+          onClick={() => canConfirm && onUpdate(ride.id, { status: "confermata", price: Number(price), driver, modified: false })}
           disabled={!canConfirm}
           className="flex-1 py-2 rounded-lg text-xs font-medium"
           style={{
@@ -1028,6 +1205,7 @@ function LuxWayApp() {
           hotel={hotel}
           rides={rides}
           onNewRide={addRide}
+          onUpdate={updateRide}
           onExit={() => setView("login")}
         />
       )}
