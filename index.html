@@ -16,6 +16,14 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>body{margin:0;background:#0E1116}</style>
+<script>
+window.addEventListener("error", function (e) {
+  var el = document.createElement("div");
+  el.style.cssText = "position:fixed;bottom:0;left:0;right:0;background:#7a2e2e;color:#fff;font:12px monospace;padding:8px 12px;z-index:9999;white-space:pre-wrap";
+  el.textContent = "Errore: " + (e.message || e.error);
+  document.body.appendChild(el);
+});
+</script>
 </head>
 <body>
 <div id="root"></div>
@@ -31,6 +39,16 @@ const { useState, useMemo, useRef, useEffect } = React;
 
 const HOTEL_FEE = 10;   // € per corsa completata, all'hotel
 const PLATFORM_FEE = 2; // € per corsa completata, alla piattaforma
+
+/* Date dinamiche: la demo è sempre "fresca" qualunque giorno la apri */
+const _d = (offset) => {
+  const d = new Date();
+  d.setDate(d.getDate() + offset);
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+};
+const TODAY = _d(0);
+const TOMORROW = _d(1);
 
 const T = {
   bg: "#0E1116",
@@ -123,16 +141,6 @@ const SEED_RIDES = [
     notes: "Partenza presto, colazione al sacco", price: 70, status: "richiesta", driver: "",
   },
 ];
-
-/* Date dinamiche: la demo è sempre "fresca" qualunque giorno la apri */
-const _d = (offset) => {
-  const d = new Date();
-  d.setDate(d.getDate() + offset);
-  const p = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-};
-const TODAY = _d(0);
-const TOMORROW = _d(1);
 
 const eur = (n) =>
   new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(n || 0);
