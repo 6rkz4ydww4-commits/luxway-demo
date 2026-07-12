@@ -2,7 +2,7 @@
 <html lang="it">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="robots" content="noindex">
 <meta name="theme-color" content="#0E1116">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -15,12 +15,10 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
-<style>body{margin:0;background:#0E1116}</style>
+<style>html,body{margin:0;background:#0E1116;overflow-x:hidden;overscroll-behavior:none}</style>
 <script>
 window.addEventListener("error", function (e) {
-  // Ignora gli errori cross-origin delle librerie esterne ("Script error.")
-  // e mostra solo errori reali del codice dell'app.
-  if (!e.message || e.message === "Script error." || e.message.indexOf("Script error") === 0) return;
+  if (!e.message || e.message.indexOf("Script error") === 0) return;
   if (e.filename && e.filename.indexOf(location.host) === -1 && e.filename !== "") return;
   var el = document.createElement("div");
   el.style.cssText = "position:fixed;bottom:0;left:0;right:0;background:#7a2e2e;color:#fff;font:12px monospace;padding:8px 12px;z-index:9999;white-space:pre-wrap";
@@ -41,8 +39,10 @@ const { useState, useMemo, useRef, useEffect } = React;
    Commissioni fisse per corsa completata: 10 € all'hotel, 2 € alla piattaforma.
    ============================================================ */
 
-const HOTEL_FEE = 10;   // € per corsa completata, all'hotel
 const PLATFORM_FEE = 2; // € per corsa completata, alla piattaforma
+// Modello prezzi: il listino è quanto percepisce l'operatore (Carlos).
+// L'hotel sceglie liberamente il prezzo al cliente: l'eccedenza sul listino
+// è la commissione dell'hotel. Es: listino FCO 60 €, prezzo 70 € → 10 € all'hotel.
 
 /* Date dinamiche: la demo è sempre "fresca" qualunque giorno la apri */
 const _d = (offset) => {
@@ -81,26 +81,29 @@ const HOTELS = [
 ];
 
 /* Numero WhatsApp Business di LuxWay (segnaposto — da sostituire col numero reale) */
-const WHATSAPP_NUMBER = "393000000000";
+const WHATSAPP_NUMBER = "393290937951";
 
-/* Luoghi frequenti e tariffe standard hotel ↔ luogo (modificabili) */
+/* Luoghi frequenti e LISTINO operatore hotel ↔ luogo (valori d'esempio, da sostituire col listino ufficiale) */
 const PLACES = [
-  { key: "Fiumicino", label: "Aeroporto di Fiumicino (FCO)", price: 70 },
-  { key: "Ciampino", label: "Aeroporto di Ciampino (CIA)", price: 70 },
-  { key: "Civitavecchia", label: "Porto di Civitavecchia", price: 120 },
+  { key: "Fiumicino", label: "Aeroporto di Fiumicino (FCO)", base: 60 },
+  { key: "Ciampino", label: "Aeroporto di Ciampino (CIA)", base: 60 },
+  { key: "Civitavecchia", label: "Porto di Civitavecchia", base: 110 },
 ];
 
 const hotelLabel = (h) => `${h.name} — ${h.address}`;
 
-/* Se la tratta è hotel ↔ luogo frequente, restituisce la tariffa standard */
-const routePrice = (pickup, dropoff) => {
+/* Se la tratta è hotel ↔ luogo frequente, restituisce il listino operatore */
+const routeBase = (pickup, dropoff) => {
   const find = (s) => PLACES.find((p) => (s || "").toLowerCase().includes(p.key.toLowerCase()));
   const a = find(pickup);
   const b = find(dropoff);
-  if (a && !b) return a.price;
-  if (b && !a) return b.price;
+  if (a && !b) return a.base;
+  if (b && !a) return b.base;
   return 0;
 };
+
+/* Commissione hotel su una corsa: eccedenza del prezzo cliente sul listino */
+const hotelCut = (r) => Math.max(0, (r.price || 0) - (r.base || 0));
 
 const DRIVERS = [
   { name: "Carlos", phone: "+39 329 093 7951" },
@@ -120,31 +123,31 @@ const SEED_RIDES = [
     id: 1, code: "LW-1041", hotelId: "h1", client: "Sig. Andersen", clientPhone: "+45 20 12 34 56",
     date: TODAY, time: "09:30", pickup: "Grand Hotel Riviera — Via Veneto 12, Roma",
     dropoff: "Aeroporto di Fiumicino (FCO)", pax: 2, flight: "AZ 1734",
-    notes: "2 valigie grandi", price: 70, status: "completata", driver: "Carlos",
+    notes: "2 valigie grandi", base: 60, price: 70, status: "completata", driver: "Carlos",
   },
   {
     id: 2, code: "LW-1042", hotelId: "h2", client: "Fam. Dubois", clientPhone: "+33 6 12 34 56 78",
     date: TODAY, time: "14:15", pickup: "Aeroporto di Ciampino (CIA)",
     dropoff: "Palazzo Aurora — Piazza Navona 8, Roma", pax: 4, flight: "FR 1226",
-    notes: "Seggiolino bambino", price: 70, status: "confermata", driver: "Marco R.",
+    notes: "Seggiolino bambino", base: 60, price: 70, status: "confermata", driver: "Marco R.",
   },
   {
     id: 3, code: "LW-1043", hotelId: "h1", client: "Sig.ra Keller", clientPhone: "+49 171 234 5678",
     date: TOMORROW, time: "08:00", pickup: "Grand Hotel Riviera",
     dropoff: "Stazione Centrale", pax: 1, flight: "",
-    notes: "", price: 45, status: "richiesta", driver: "",
+    notes: "", base: 0, price: 45, status: "richiesta", driver: "",
   },
   {
     id: 4, code: "LW-1044", hotelId: "h3", client: "Mr. & Mrs. Ito", clientPhone: "+81 90 1234 5678",
     date: TOMORROW, time: "18:45", pickup: "Boutique Hotel Bellavista",
     dropoff: "Ristorante La Terrazza", pax: 2, flight: "",
-    notes: "Ritorno ore 23:00 da concordare", price: 0, status: "richiesta", driver: "",
+    notes: "Ritorno ore 23:00 da concordare", base: 0, price: 0, status: "richiesta", driver: "",
   },
   {
     id: 5, code: "LW-1045", hotelId: "h4", client: "Sig.ra Novak", clientPhone: "+41 79 123 45 67",
     date: TOMORROW, time: "06:15", pickup: "Domus Liberius — Via Liberiana 17, Roma",
     dropoff: "Aeroporto di Fiumicino (FCO)", pax: 2, flight: "LH 233",
-    notes: "Partenza presto, colazione al sacco", price: 70, status: "richiesta", driver: "",
+    notes: "Partenza presto, colazione al sacco", base: 60, price: 70, status: "richiesta", driver: "",
   },
 ];
 
@@ -205,7 +208,7 @@ function Input(props) {
   return (
     <input
       {...props}
-      className={"w-full rounded-lg px-3 py-2 text-sm outline-none " + (props.className || "")}
+      className={"w-full rounded-lg px-3 py-2 text-base outline-none " + (props.className || "")}
       style={{ ...inputStyle, ...(props.style || {}) }}
     />
   );
@@ -595,25 +598,35 @@ function HotelPanel({ hotel, rides, onNewRide, onUpdate, onExit }) {
   const [tab, setTab] = useState("nuova");
   const empty = {
     client: "", phone: "", date: TODAY, time: "", pickup: hotelLabel(hotel),
-    dropoff: "", pax: 2, flight: "", notes: "",
+    dropoff: "", pax: 2, flight: "", notes: "", price: "",
   };
   const [form, setForm] = useState(empty);
   const [sent, setSent] = useState(false);
 
   const quickOptions = [hotelLabel(hotel), ...PLACES.map((p) => p.label)];
-  const suggested = routePrice(form.pickup, form.dropoff);
+  const base = routeBase(form.pickup, form.dropoff);
+  const priceNum = Number(form.price) || 0;
+  const commission = base > 0 && priceNum > 0 ? priceNum - base : 0;
+  const priceTooLow = base > 0 && priceNum > 0 && priceNum < base;
 
   const mine = rides.filter((r) => r.hotelId === hotel.id);
   const completed = mine.filter((r) => r.status === "completata");
-  const earned = completed.length * HOTEL_FEE;
-  const pending = mine.filter((r) => r.status === "confermata").length * HOTEL_FEE;
+  const earned = completed.reduce((s, r) => s + hotelCut(r), 0);
+  const pending = mine.filter((r) => r.status === "confermata").reduce((s, r) => s + hotelCut(r), 0);
 
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
-  const valid = form.client && form.phone && form.date && form.time && form.pickup && form.dropoff;
+  const valid = form.client && form.phone && form.date && form.time && form.pickup && form.dropoff && !priceTooLow;
 
   const submit = () => {
     if (!valid) return;
-    onNewRide({ ...form, clientPhone: form.phone, pax: Number(form.pax) || 1, hotelId: hotel.id, price: suggested });
+    onNewRide({
+      ...form,
+      clientPhone: form.phone,
+      pax: Number(form.pax) || 1,
+      hotelId: hotel.id,
+      base,
+      price: priceNum > 0 ? priceNum : base,
+    });
     setForm(empty);
     setSent(true);
     setTimeout(() => setSent(false), 4200);
@@ -649,9 +662,9 @@ function HotelPanel({ hotel, rides, onNewRide, onUpdate, onExit }) {
       </nav>
 
       {tab === "nuova" && (
-        <section className="px-4 pt-3 max-w-md lg:max-w-2xl mx-auto">
+        <section className="px-4 pt-3 max-w-md lg:max-w-5xl mx-auto lg:grid lg:grid-cols-5 lg:gap-5 lg:items-start">
           <div
-            className="rounded-xl p-4 space-y-3"
+            className="rounded-xl p-4 space-y-3 lg:col-span-3"
             style={{ background: T.surface, border: `1px solid ${T.line}` }}
           >
             <div className="grid grid-cols-2 gap-3">
@@ -678,13 +691,34 @@ function HotelPanel({ hotel, rides, onNewRide, onUpdate, onExit }) {
               <Input value={form.dropoff} onChange={set("dropoff")} placeholder="Scegli sotto o scrivi l'indirizzo" />
               <Chips options={quickOptions} onPick={(o) => setForm({ ...form, dropoff: o })} />
             </Field>
-            {suggested > 0 && (
-              <div
-                className="text-xs rounded-lg px-3 py-2 flex justify-between items-center"
-                style={{ background: T.goldSoft, color: T.gold, fontFamily: "Jost, sans-serif" }}
-              >
-                <span>Tariffa standard tratta</span>
-                <span className="text-sm" style={{ fontFamily: "Marcellus, serif" }}>{eur(suggested)}</span>
+            <div className="grid grid-cols-2 gap-3 items-end">
+              <Field label="Prezzo al cliente (€)">
+                <Input
+                  type="number"
+                  min="0"
+                  value={form.price}
+                  onChange={set("price")}
+                  placeholder={base > 0 ? String(base) : "Da concordare"}
+                />
+              </Field>
+              {base > 0 && (
+                <div
+                  className="text-xs rounded-lg px-3 py-2"
+                  style={{ background: T.goldSoft, color: T.gold, fontFamily: "Jost, sans-serif" }}
+                >
+                  Listino LuxWay: <b style={{ fontFamily: "Marcellus, serif" }}>{eur(base)}</b>
+                </div>
+              )}
+            </div>
+            {priceTooLow && (
+              <div className="text-xs rounded-lg px-3 py-2" style={{ background: T.redSoft, color: T.red, fontFamily: "Jost, sans-serif" }}>
+                Il prezzo al cliente non può essere inferiore al listino ({eur(base)}).
+              </div>
+            )}
+            {commission > 0 && !priceTooLow && (
+              <div className="text-xs rounded-lg px-3 py-2 flex justify-between items-center" style={{ background: T.greenSoft, color: T.green, fontFamily: "Jost, sans-serif" }}>
+                <span>La tua commissione su questa corsa</span>
+                <span className="text-sm" style={{ fontFamily: "Marcellus, serif" }}>{eur(commission)}</span>
               </div>
             )}
             <div className="grid grid-cols-2 gap-3">
@@ -722,8 +756,24 @@ function HotelPanel({ hotel, rides, onNewRide, onUpdate, onExit }) {
               </div>
             )}
           </div>
-          <p className="text-xs mt-3 text-center" style={{ color: T.muted, fontFamily: "Jost, sans-serif" }}>
-            Per ogni corsa completata l'hotel guadagna {eur(HOTEL_FEE)} di commissione.
+          <div className="hidden lg:block lg:col-span-2 space-y-3">
+            <div
+              className="text-xs uppercase tracking-widest px-1"
+              style={{ color: T.muted, fontFamily: "Jost, sans-serif" }}
+            >
+              Ultime corse
+            </div>
+            {mine.length === 0 && (
+              <p className="text-sm px-1" style={{ color: T.muted, fontFamily: "Jost, sans-serif" }}>
+                Le corse inserite appariranno qui.
+              </p>
+            )}
+            {[...mine].reverse().slice(0, 3).map((r) => (
+              <RideTicket key={r.id} ride={r} />
+            ))}
+          </div>
+          <p className="text-xs mt-3 text-center lg:col-span-5" style={{ color: T.muted, fontFamily: "Jost, sans-serif" }}>
+            Tutto ciò che eccede il listino LuxWay è la tua commissione: sei libero di definire il prezzo al cliente.
           </p>
         </section>
       )}
@@ -769,7 +819,7 @@ function HotelPanel({ hotel, rides, onNewRide, onUpdate, onExit }) {
                 style={{ borderBottom: `1px dashed ${T.line}`, fontFamily: "Jost, sans-serif" }}
               >
                 <span style={{ color: T.ivory }}>{r.code} · {dateIT(r.date)}</span>
-                <span style={{ color: T.green }}>+ {eur(HOTEL_FEE)}</span>
+                <span style={{ color: T.green }}>+ {eur(hotelCut(r))}</span>
               </div>
             ))}
           </div>
@@ -796,11 +846,15 @@ function HotelRideCard({ ride, hotel, onUpdate }) {
     setForm({
       date: ride.date, time: ride.time, pickup: ride.pickup, dropoff: ride.dropoff,
       pax: ride.pax, flight: ride.flight || "", notes: ride.notes || "", phone: ride.clientPhone || "",
+      price: ride.price > 0 ? ride.price : "",
     });
     setEditing(true);
   };
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
-  const valid = form && form.date && form.time && form.pickup && form.dropoff;
+  const editBase = form ? (ride.status === "richiesta" ? routeBase(form.pickup, form.dropoff) : ride.base || 0) : 0;
+  const editPrice = form ? Number(form.price) || 0 : 0;
+  const editTooLow = editBase > 0 && editPrice > 0 && editPrice < editBase;
+  const valid = form && form.date && form.time && form.pickup && form.dropoff && !editTooLow;
 
   const save = () => {
     if (!valid) return;
@@ -809,10 +863,8 @@ function HotelRideCard({ ride, hotel, onUpdate }) {
       pax: Number(form.pax) || 1, flight: form.flight, notes: form.notes,
       clientPhone: form.phone, modified: true,
     };
-    if (ride.status === "richiesta") {
-      const p = routePrice(form.pickup, form.dropoff);
-      if (p > 0) patch.price = p;
-    }
+    if (ride.status === "richiesta") patch.base = editBase;
+    patch.price = editPrice > 0 ? editPrice : editBase;
     onUpdate(ride.id, patch);
     setEditing(false);
     setSaved(true);
@@ -873,6 +925,14 @@ function HotelRideCard({ ride, hotel, onUpdate }) {
           </div>
           <Field label="Telefono ospite"><Input type="tel" value={form.phone} onChange={set("phone")} /></Field>
           <Field label="Note per l'autista"><Input value={form.notes} onChange={set("notes")} /></Field>
+          <Field label="Prezzo al cliente (€)">
+            <Input type="number" min="0" value={form.price} onChange={set("price")} placeholder={editBase > 0 ? String(editBase) : "Da concordare"} />
+          </Field>
+          {editTooLow && (
+            <div className="text-xs rounded-lg px-3 py-2" style={{ background: T.redSoft, color: T.red, fontFamily: "Jost, sans-serif" }}>
+              Il prezzo non può essere inferiore al listino ({eur(editBase)}).
+            </div>
+          )}
           <div className="flex gap-2">
             <button
               onClick={save}
@@ -922,7 +982,7 @@ function AdminPanel({ rides, onUpdate, onExit }) {
   const rejected = byStatus("rifiutata");
 
   const revenue = done.reduce((s, r) => s + r.price, 0);
-  const hotelDue = done.length * HOTEL_FEE;
+  const hotelDue = done.reduce((s, r) => s + hotelCut(r), 0);
   const platformDue = done.length * PLATFORM_FEE;
   const net = revenue - hotelDue - platformDue;
 
@@ -1055,7 +1115,7 @@ function AdminPanel({ rides, onUpdate, onExit }) {
             style={{ background: T.surface, border: `1px solid ${T.line}`, fontFamily: "Jost, sans-serif" }}
           >
             <Row label="Incasso corse completate" value={eur(revenue)} color={T.ivory} />
-            <Row label={`Commissioni hotel (${eur(HOTEL_FEE)} / corsa)`} value={`− ${eur(hotelDue)}`} color={T.red} />
+            <Row label="Commissioni hotel (eccedenza su listino)" value={`− ${eur(hotelDue)}`} color={T.red} />
             <Row label={`Quota piattaforma LuxWay (${eur(PLATFORM_FEE)} / corsa)`} value={`− ${eur(platformDue)}`} color={T.red} />
             <div style={{ borderTop: `1px dashed ${T.line}` }} className="pt-3">
               <Row label="Netto Carlos" value={eur(net)} color={T.green} big />
@@ -1069,8 +1129,9 @@ function AdminPanel({ rides, onUpdate, onExit }) {
               Commissioni per hotel
             </div>
             {HOTELS.map((h) => {
-              const n = done.filter((r) => r.hotelId === h.id).length;
-              const tot = n * HOTEL_FEE;
+              const hDone = done.filter((r) => r.hotelId === h.id);
+              const n = hDone.length;
+              const tot = hDone.reduce((s, r) => s + hotelCut(r), 0);
               return (
                 <div
                   key={h.id}
@@ -1104,42 +1165,67 @@ function Row({ label, value, color, big }) {
 }
 
 function RequestCard({ ride, onUpdate }) {
-  const [price, setPrice] = useState(ride.price > 0 ? ride.price : routePrice(ride.pickup, ride.dropoff) || "");
+  const [price, setPrice] = useState(ride.price > 0 ? ride.price : "");
+  const [base, setBase] = useState(ride.base > 0 ? ride.base : routeBase(ride.pickup, ride.dropoff) || "");
   const [driver, setDriver] = useState(ride.driver || DRIVERS[0].name);
   const hotel = HOTELS.find((h) => h.id === ride.hotelId);
-  const canConfirm = Number(price) > 0;
+  const p = Number(price) || 0;
+  const b = Number(base) || 0;
+  const canConfirm = p > 0 && b > 0 && p >= b;
 
   return (
     <RideTicket ride={ride} hotel={hotel} showHotel>
       <div className="mt-3 grid grid-cols-2 gap-3">
-        <Field label="Prezzo (€)">
+        <Field label="Prezzo cliente (€)">
           <Input
             type="number" min="0" value={price}
             onChange={(e) => setPrice(e.target.value)}
+            placeholder="Es. 70"
+          />
+        </Field>
+        <Field label="Listino LuxWay (€)">
+          <Input
+            type="number" min="0" value={base}
+            onChange={(e) => setBase(e.target.value)}
             placeholder="Es. 60"
           />
         </Field>
-        <Field label="Autista">
-          <select
-            value={driver}
-            onChange={(e) => setDriver(e.target.value)}
-            className="w-full rounded-lg px-3 py-2 text-sm outline-none"
-            style={inputStyle}
-          >
-            {DRIVERS.map((d) => (
-              <option key={d.name} value={d.name}>{d.name}</option>
-            ))}
-          </select>
-        </Field>
       </div>
+      <Field label="Autista">
+        <select
+          value={driver}
+          onChange={(e) => setDriver(e.target.value)}
+          className="w-full rounded-lg px-3 py-2 text-base outline-none"
+          style={inputStyle}
+        >
+          {DRIVERS.map((d) => (
+            <option key={d.name} value={d.name}>{d.name}</option>
+          ))}
+        </select>
+      </Field>
       {driverPhone(driver) ? (
         <div className="mt-2 text-xs" style={{ color: T.blue, fontFamily: "Jost, sans-serif" }}>
           ☏ {driver}: {driverPhone(driver)} — visibile all'hotel dopo la conferma
         </div>
       ) : null}
+      {canConfirm && (
+        <div
+          className="mt-2 text-xs rounded-lg px-3 py-2 flex flex-wrap gap-x-4 gap-y-1"
+          style={{ background: T.goldSoft, fontFamily: "Jost, sans-serif" }}
+        >
+          <span style={{ color: T.ivory }}>A te: {eur(b - PLATFORM_FEE)}</span>
+          <span style={{ color: T.gold }}>Hotel: {eur(p - b)}</span>
+          <span style={{ color: T.muted }}>LuxWay: {eur(PLATFORM_FEE)}</span>
+        </div>
+      )}
+      {p > 0 && b > 0 && p < b && (
+        <div className="mt-2 text-xs rounded-lg px-3 py-2" style={{ background: T.redSoft, color: T.red, fontFamily: "Jost, sans-serif" }}>
+          Il prezzo cliente è sotto listino: verifica con l'hotel.
+        </div>
+      )}
       <div className="mt-3 flex gap-2">
         <button
-          onClick={() => canConfirm && onUpdate(ride.id, { status: "confermata", price: Number(price), driver, modified: false })}
+          onClick={() => canConfirm && onUpdate(ride.id, { status: "confermata", price: p, base: b, driver, modified: false })}
           disabled={!canConfirm}
           className="flex-1 py-2 rounded-lg text-xs font-medium"
           style={{
@@ -1193,7 +1279,15 @@ function LuxWayApp() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@300;400;500;600&display=swap');
         * { box-sizing: border-box; }
-        body { margin: 0; }
+        html, body { margin: 0; overflow-x: hidden; overscroll-behavior: none; background: ${T.bg}; }
+        body { touch-action: pan-y; }
+        input, select, textarea { min-width: 0; max-width: 100%; }
+        input[type="date"], input[type="time"] {
+          -webkit-appearance: none; appearance: none;
+          text-align: left;
+        }
+        input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        .grid > * { min-width: 0; }
         input[type="date"]::-webkit-calendar-picker-indicator,
         input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(0.7); }
         select option { background: ${T.surface2}; color: ${T.ivory}; }
