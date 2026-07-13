@@ -77,37 +77,46 @@ const T = {
 };
 
 const HOTELS = [
-  { id: "h4", name: "Domus Liberius", address: "Via Liberiana 17, Roma" },
-  { id: "h5", name: "Globus Hotel Best Western", address: "Viale Ippocrate 119, Roma" },
-  { id: "h1", name: "Grand Hotel Riviera", address: "Via Veneto 12, Roma" },
-  { id: "h2", name: "Palazzo Aurora", address: "Piazza Navona 8, Roma" },
-  { id: "h3", name: "Boutique Hotel Bellavista", address: "Via della Scala 23, Roma" },
+  { id: "h4", name: "Domus Liberius", address: "Via Liberiana 17, Roma", pwd: "domus2026" },
+  { id: "h5", name: "Globus Hotel Best Western", address: "Viale Ippocrate 119, Roma", pwd: "globus2026" },
+  { id: "h1", name: "Grand Hotel Riviera", address: "Via Veneto 12, Roma", pwd: "hotel2026" },
+  { id: "h2", name: "Palazzo Aurora", address: "Piazza Navona 8, Roma", pwd: "hotel2026" },
+  { id: "h3", name: "Boutique Hotel Bellavista", address: "Via della Scala 23, Roma", pwd: "hotel2026" },
 ];
+
+/* Accordi tariffari specifici per struttura (override del listino standard) */
+const HOTEL_RATES = {
+  h5: { Fiumicino: { car: 55 }, Ciampino: { car: 55 } }, // Globus: berlina a 55 €
+};
 
 /* Numero WhatsApp Business di LuxWay (segnaposto — da sostituire col numero reale) */
 const WHATSAPP_NUMBER = "393290937951";
 
 /* LISTINO UFFICIALE LuxWay (tariffe nette hotel): berlina/SUV fino a 4 pax, van 5–8 pax */
 const PLACES = [
-  { key: "Fiumicino", label: "Aeroporto di Fiumicino (FCO)", car: 55, van: 75 },
-  { key: "Ciampino", label: "Aeroporto di Ciampino (CIA)", car: 55, van: 75 },
+  { key: "Fiumicino", label: "Aeroporto di Fiumicino (FCO)", car: 60, van: 75 },
+  { key: "Ciampino", label: "Aeroporto di Ciampino (CIA)", car: 60, van: 75 },
   { key: "Civitavecchia", label: "Porto di Civitavecchia", car: 160, van: 180 },
 ];
 
 const hotelLabel = (h) => `${h.name} — ${h.address}`;
 
 /* Listino operatore per la tratta: dipende dal VEICOLO scelto (suggerito dai pax, confermato dall'utente) */
-const routeBase = (pickup, dropoff, vehicle) => {
+const routeBase = (pickup, dropoff, vehicle, hotelId) => {
   const find = (s) => PLACES.find((p) => (s || "").toLowerCase().includes(p.key.toLowerCase()));
   const a = find(pickup);
   const b = find(dropoff);
   const place = a && !b ? a : b && !a ? b : null;
   if (!place) return 0;
-  return vehicle === "van" ? place.van : place.car;
+  const v = vehicle === "van" ? "van" : "car";
+  const override = HOTEL_RATES[hotelId] && HOTEL_RATES[hotelId][place.key];
+  return override && override[v] != null ? override[v] : place[v];
 };
 
 const suggestVehicle = (pax) => ((Number(pax) || 1) <= 4 ? "car" : "van");
 const vehicleLabel = (v) => (v === "van" ? "Van (5–8 pax)" : "Berlina/SUV");
+
+const TRIPADVISOR_URL = "https://it.tripadvisor.ch/UserReviewEdit-g187791-d33680217-LuxWay-Rome_Lazio.html";
 
 /* Link al tracking live del volo (Flightradar24) */
 const flightUrl = (flight) =>
@@ -122,18 +131,18 @@ const hotelCut = (r) => Math.max(0, (r.price || 0) - (r.base || 0));
 
 /* Export report corse: Excel (.xlsx) se la libreria è disponibile, altrimenti CSV */
 const exportRides = (rows, filename) => {
-  const header = ["Data", "Ora", "Codice", "Hotel", "Ospite", "Tratta", "Pax", "Veicolo", "Autista", "Prezzo cliente €", "Listino €", "Commissione hotel €"];
+  const header = ["Data", "Ora", "Codice", "Hotel", "Ospite", "Receptionist", "Tratta", "Pax", "Veicolo", "Autista", "Prezzo cliente €", "Listino €", "Commissione hotel €"];
   const data = rows.map((r) => {
     const h = HOTELS.find((x) => x.id === r.hotelId);
     return [
-      r.date, r.time, r.code, h ? h.name : "", r.client,
+      r.date, r.time, r.code, h ? h.name : "", r.client, r.receptionist || "",
       `${r.pickup} → ${r.dropoff}`, r.pax, vehicleLabel(r.vehicle),
       r.driver || "", r.price || 0, r.base || 0, hotelCut(r),
     ];
   });
   if (typeof XLSX !== "undefined") {
     const ws = XLSX.utils.aoa_to_sheet([header, ...data]);
-    ws["!cols"] = header.map((hh, i) => ({ wch: i === 5 ? 48 : Math.max(10, hh.length + 2) }));
+    ws["!cols"] = header.map((hh, i) => ({ wch: i === 6 ? 48 : Math.max(10, hh.length + 2) }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Corse");
     XLSX.writeFile(wb, filename + ".xlsx");
@@ -165,34 +174,34 @@ const driverPhone = (name) => {
 
 const SEED_RIDES = [
   {
-    id: 1, code: "LW-1041", hotelId: "h1", client: "Sig. Andersen", clientPhone: "+45 20 12 34 56",
+    id: 1, code: "LW-1041", hotelId: "h1", client: "Sig. Andersen", clientPhone: "+45 20 12 34 56", receptionist: "Elena",
     date: TODAY, time: "09:30", pickup: "Grand Hotel Riviera — Via Veneto 12, Roma",
     dropoff: "Aeroporto di Fiumicino (FCO)", pax: 2, flight: "AZ 1734", vehicle: "car",
-    notes: "2 valigie grandi", base: 55, price: 70, status: "completata", driver: "Carlos",
+    notes: "2 valigie grandi", base: 60, price: 70, status: "completata", driver: "Carlos",
   },
   {
-    id: 2, code: "LW-1042", hotelId: "h2", client: "Fam. Dubois", clientPhone: "+33 6 12 34 56 78",
+    id: 2, code: "LW-1042", hotelId: "h2", client: "Fam. Dubois", clientPhone: "+33 6 12 34 56 78", receptionist: "Paolo",
     date: TODAY, time: "13:40", pickup: "Aeroporto di Ciampino (CIA)",
     dropoff: "Palazzo Aurora — Piazza Navona 8, Roma", pax: 4, flight: "FR 1226", vehicle: "car",
-    notes: "Seggiolino bambino", base: 55, price: 70, status: "confermata", driver: "Marco R.",
+    notes: "Seggiolino bambino", base: 60, price: 70, status: "confermata", driver: "Marco R.",
   },
   {
-    id: 3, code: "LW-1043", hotelId: "h1", client: "Sig.ra Keller", clientPhone: "+49 171 234 5678",
+    id: 3, code: "LW-1043", hotelId: "h1", client: "Sig.ra Keller", clientPhone: "+49 171 234 5678", receptionist: "Elena",
     date: TOMORROW, time: "08:00", pickup: "Grand Hotel Riviera",
     dropoff: "Stazione Centrale", pax: 1, flight: "", vehicle: "car",
     notes: "", base: 0, price: 45, status: "richiesta", driver: "",
   },
   {
-    id: 4, code: "LW-1044", hotelId: "h3", client: "Mr. & Mrs. Ito", clientPhone: "+81 90 1234 5678",
+    id: 4, code: "LW-1044", hotelId: "h3", client: "Mr. & Mrs. Ito", clientPhone: "+81 90 1234 5678", receptionist: "Miriam",
     date: TOMORROW, time: "18:45", pickup: "Boutique Hotel Bellavista",
     dropoff: "Ristorante La Terrazza", pax: 2, flight: "", vehicle: "car",
     notes: "Ritorno ore 23:00 da concordare", base: 0, price: 0, status: "richiesta", driver: "",
   },
   {
-    id: 5, code: "LW-1045", hotelId: "h4", client: "Sig.ra Novak", clientPhone: "+41 79 123 45 67",
+    id: 5, code: "LW-1045", hotelId: "h4", client: "Sig.ra Novak", clientPhone: "+41 79 123 45 67", receptionist: "Julia",
     date: TOMORROW, time: "06:15", pickup: "Domus Liberius — Via Liberiana 17, Roma",
     dropoff: "Aeroporto di Fiumicino (FCO)", pax: 2, flight: "LH 233", vehicle: "car",
-    notes: "Partenza presto, colazione al sacco", base: 55, price: 70, status: "richiesta", driver: "",
+    notes: "Partenza presto, colazione al sacco", base: 60, price: 70, status: "richiesta", driver: "",
   },
 ];
 
@@ -280,6 +289,25 @@ function Chips({ options, onPick }) {
   );
 }
 
+/* Pulsante con feedback: pressione, attesa breve con spinner, poi azione */
+function ActionButton({ label, busyLabel, onAction, disabled, className, style }) {
+  const [busy, setBusy] = useState(false);
+  const run = () => {
+    if (disabled || busy) return;
+    setBusy(true);
+    setTimeout(() => {
+      onAction();
+      setBusy(false);
+    }, 650);
+  };
+  return (
+    <button onClick={run} disabled={disabled || busy} className={className} style={style}>
+      {busy ? <span className="spin-dot" /> : null}
+      {busy ? busyLabel || "Un attimo…" : label}
+    </button>
+  );
+}
+
 function Stat({ label, value, accent }) {
   return (
     <div
@@ -348,8 +376,10 @@ function RideTicket({ ride, hotel, children, showHotel }) {
           </span>
           <span>{ride.pax} pax</span>
           {ride.modified ? <span style={{ color: T.gold }}>● Modificata dall'hotel</span> : null}
+          {ride.urgent && ride.status === "richiesta" ? <span style={{ color: T.red }}>⏱ URGENTE</span> : null}
           {ride.vehicle ? <span>{vehicleLabel(ride.vehicle)}</span> : null}
           {ride.bags > 0 ? <span>{ride.bags} bagagli</span> : null}
+          {ride.receptionist ? <span>Inserita da {ride.receptionist}</span> : null}
           {ride.flight ? (
             <a
               href={flightUrl(ride.flight)}
@@ -493,7 +523,7 @@ function Login({ onEnter }) {
 
   const tryHotel = () => {
     const h = HOTELS.find((x) => x.name.trim().toLowerCase() === hotelName.trim().toLowerCase());
-    if (h && hotelPwd.trim().toLowerCase() === "hotel2026") {
+    if (h && hotelPwd.trim().toLowerCase() === (h.pwd || "hotel2026")) {
       setErr("");
       onEnter("hotel", h.id);
     } else setErr("Credenziali non valide. Riprova.");
@@ -663,19 +693,22 @@ function HotelPanel({ hotel, rides, onNewRide, onUpdate, onExit }) {
   const empty = {
     client: "", phone: "", date: TODAY, time: "", pickup: hotelLabel(hotel),
     dropoff: "", pax: 2, vehicle: "car", vehicleTouched: false, bags: "",
-    flight: "", ship: "", notes: "", price: "",
+    flight: "", ship: "", notes: "", price: "", receptionist: "",
   };
   const [form, setForm] = useState(empty);
   const [sent, setSent] = useState(false);
 
   const quickOptions = [hotelLabel(hotel), ...PLACES.map((p) => p.label)];
-  const base = routeBase(form.pickup, form.dropoff, form.vehicle);
+  const base = routeBase(form.pickup, form.dropoff, form.vehicle, hotel.id);
   const priceNum = Number(form.price) || 0;
   const commission = base > 0 && priceNum > 0 ? priceNum - base : 0;
   const priceTooLow = base > 0 && priceNum > 0 && priceNum < base;
   const overCap = base > 0 && priceNum > base + MAX_MARKUP;
   const airportArr = isAirport(form.pickup);
   const portArr = isPort(form.pickup);
+  const targetDT = form.date && form.time ? new Date(`${form.date}T${form.time}`) : null;
+  const hoursToService = targetDT ? (targetDT - new Date()) / 36e5 : null;
+  const urgent = hoursToService !== null && hoursToService <= MOD_LOCK_HOURS;
 
   const setPax = (e) => {
     const pax = e.target.value;
@@ -693,7 +726,7 @@ function HotelPanel({ hotel, rides, onNewRide, onUpdate, onExit }) {
 
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
   const valid =
-    form.client && form.phone && form.date && form.time && form.pickup && form.dropoff &&
+    form.client && form.phone && form.receptionist && form.date && form.time && form.pickup && form.dropoff &&
     !priceTooLow &&
     (!airportArr || form.flight) &&
     (!portArr || form.ship);
@@ -709,6 +742,7 @@ function HotelPanel({ hotel, rides, onNewRide, onUpdate, onExit }) {
       base,
       price: priceNum > 0 ? priceNum : base,
       extraMarkup: overCap,
+      urgent,
     });
     setForm(empty);
     setSent(true);
@@ -758,6 +792,9 @@ function HotelPanel({ hotel, rides, onNewRide, onUpdate, onExit }) {
                 <Input type="tel" value={form.phone} onChange={set("phone")} placeholder="+39 ..." />
               </Field>
             </div>
+            <Field label="Receptionist (chi inserisce la corsa)">
+              <Input value={form.receptionist} onChange={set("receptionist")} placeholder="Il tuo nome" />
+            </Field>
             {airportArr || portArr ? (
               <>
                 <Field label="Data">
@@ -789,6 +826,21 @@ function HotelPanel({ hotel, rides, onNewRide, onUpdate, onExit }) {
                 <Field label="Ora pickup">
                   <Input type="time" value={form.time} onChange={set("time")} />
                 </Field>
+              </div>
+            )}
+            {urgent && (
+              <div className="text-xs rounded-lg px-3 py-2" style={{ background: T.goldSoft, color: T.gold, fontFamily: "Jost, sans-serif" }}>
+                ⏱ Mancano meno di {MOD_LOCK_HOURS} ore al servizio: la richiesta arriverà a Carlos come URGENTE.
+                Per sicurezza avvisalo anche a voce o su WhatsApp.
+                <a
+                  href={`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(`Salve Carlos, sto inserendo una corsa URGENTE (${dateIT(form.date)} ore ${form.time}, ${form.pickup || "—"} → ${form.dropoff || "—"}): riesci a coprirla?`)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block text-center mt-2 py-2 rounded-lg no-underline font-medium"
+                  style={{ background: "#25D366", color: "#0B141A" }}
+                >
+                  Avvisa Carlos su WhatsApp
+                </a>
               </div>
             )}
             <Field label="Partenza">
@@ -870,8 +922,10 @@ function HotelPanel({ hotel, rides, onNewRide, onUpdate, onExit }) {
             <Field label="Note per l'autista">
               <Input value={form.notes} onChange={set("notes")} placeholder="Bagagli, seggiolino, richieste…" />
             </Field>
-            <button
-              onClick={submit}
+            <ActionButton
+              label="Invia richiesta a LuxWay"
+              busyLabel="Invio in corso…"
+              onAction={submit}
               disabled={!valid}
               className="w-full py-2.5 rounded-lg text-sm font-medium"
               style={{
@@ -879,9 +933,7 @@ function HotelPanel({ hotel, rides, onNewRide, onUpdate, onExit }) {
                 color: valid ? "#14110A" : T.muted,
                 fontFamily: "Jost, sans-serif",
               }}
-            >
-              Invia richiesta a LuxWay
-            </button>
+            />
             {sent && (
               <div
                 className="text-xs rounded-lg py-2.5 px-3"
@@ -956,10 +1008,26 @@ function HotelPanel({ hotel, rides, onNewRide, onUpdate, onExit }) {
                 className="flex justify-between items-center py-2 text-sm"
                 style={{ borderBottom: `1px dashed ${T.line}`, fontFamily: "Jost, sans-serif" }}
               >
-                <span style={{ color: T.ivory }}>{r.code} · {dateIT(r.date)}</span>
+                <span style={{ color: T.ivory }}>{r.code} · {dateIT(r.date)}{r.receptionist ? ` · ${r.receptionist}` : ""}</span>
                 <span style={{ color: T.green }}>+ {eur(hotelCut(r))}</span>
               </div>
             ))}
+            {completed.length > 0 && (
+              <div className="mt-4 pt-3" style={{ borderTop: `1px dashed ${T.line}` }}>
+                <div className="text-xs uppercase tracking-widest mb-2" style={{ color: T.muted, fontFamily: "Jost, sans-serif" }}>
+                  Vendite per receptionist
+                </div>
+                {[...new Set(completed.map((r) => r.receptionist || "—"))].map((name) => {
+                  const own = completed.filter((r) => (r.receptionist || "—") === name);
+                  return (
+                    <div key={name} className="flex justify-between py-1.5 text-sm" style={{ fontFamily: "Jost, sans-serif" }}>
+                      <span style={{ color: T.ivory }}>{name} · {own.length} {own.length === 1 ? "corsa" : "corse"}</span>
+                      <span style={{ color: T.gold }}>{eur(own.reduce((s, r) => s + hotelCut(r), 0))}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
             {completed.length > 0 && (
               <button
                 onClick={() => exportRides(completed, "commissioni-" + hotel.name.toLowerCase().replace(/[^a-z0-9]+/g, "-"))}
@@ -999,7 +1067,7 @@ function HotelRideCard({ ride, hotel, onUpdate }) {
     setEditing(true);
   };
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
-  const editBase = form ? (ride.status === "richiesta" ? routeBase(form.pickup, form.dropoff, form.vehicle) : ride.base || 0) : 0;
+  const editBase = form ? (ride.status === "richiesta" ? routeBase(form.pickup, form.dropoff, form.vehicle, ride.hotelId) : ride.base || 0) : 0;
   const editPrice = form ? Number(form.price) || 0 : 0;
   const editTooLow = editBase > 0 && editPrice > 0 && editPrice < editBase;
   const editOverCap = editBase > 0 && editPrice > editBase + MAX_MARKUP;
@@ -1106,8 +1174,10 @@ function HotelRideCard({ ride, hotel, onUpdate }) {
             </div>
           )}
           <div className="flex gap-2">
-            <button
-              onClick={save}
+            <ActionButton
+              label="Salva modifiche"
+              busyLabel="Salvo…"
+              onAction={save}
               disabled={!valid}
               className="flex-1 py-2 rounded-lg text-xs font-medium"
               style={{
@@ -1115,9 +1185,7 @@ function HotelRideCard({ ride, hotel, onUpdate }) {
                 color: valid ? "#14110A" : T.muted,
                 fontFamily: "Jost, sans-serif",
               }}
-            >
-              Salva modifiche
-            </button>
+            />
             <button
               onClick={() => setEditing(false)}
               className="px-3 py-2 rounded-lg text-xs"
@@ -1243,6 +1311,23 @@ function AdminPanel({ rides, onUpdate, onExit }) {
                   ))}
                 </select>
               </div>
+              {r.clientPhone ? (
+                <a
+                  href={`https://wa.me/${r.clientPhone.replace(/\D/g, "")}?text=${encodeURIComponent(
+                    `Gentile ${r.client}, il suo transfer LuxWay è CONFERMATO ✅\n` +
+                    `${dateIT(r.date)} · ${isAirport(r.pickup) ? "atterraggio" : isPort(r.pickup) ? "attracco" : "pickup"} ore ${r.time}\n` +
+                    `Da: ${r.pickup}\nA: ${r.dropoff}\n` +
+                    `Il suo autista sarà ${r.driver}${driverPhone(r.driver) ? ` — contatto diretto: ${driverPhone(r.driver)}` : ""}.\n` +
+                    `Potrebbe ricevere un suo messaggio prima del servizio. Grazie per aver scelto LuxWay!`
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block text-center mt-3 py-2 rounded-lg no-underline text-xs font-medium"
+                  style={{ background: T.greenSoft, color: T.green, border: `1px solid ${T.green}`, fontFamily: "Jost, sans-serif" }}
+                >
+                  ✅ Invia conferma all'ospite ({r.client})
+                </a>
+              ) : null}
               {r.driver && driverPhone(r.driver) ? (
                 <a
                   href={`https://wa.me/${driverPhone(r.driver).replace(/\D/g, "")}?text=${encodeURIComponent(
@@ -1266,20 +1351,20 @@ function AdminPanel({ rides, onUpdate, onExit }) {
                 </a>
               ) : null}
               <div className="mt-3 flex gap-2">
-                <button
-                  onClick={() => onUpdate(r.id, { status: "completata", modified: false })}
+                <ActionButton
+                  label="Segna come completata"
+                  busyLabel="Completo…"
+                  onAction={() => onUpdate(r.id, { status: "completata", modified: false })}
                   className="flex-1 py-2 rounded-lg text-xs font-medium"
                   style={{ background: T.greenSoft, color: T.green, border: `1px solid ${T.green}`, fontFamily: "Jost, sans-serif" }}
-                >
-                  Segna come completata
-                </button>
-                <button
-                  onClick={() => onUpdate(r.id, { status: "richiesta" })}
+                />
+                <ActionButton
+                  label="Annulla conferma"
+                  busyLabel="Annullo…"
+                  onAction={() => onUpdate(r.id, { status: "richiesta" })}
                   className="px-3 py-2 rounded-lg text-xs"
                   style={{ color: T.muted, border: `1px solid ${T.line}`, fontFamily: "Jost, sans-serif" }}
-                >
-                  Annulla conferma
-                </button>
+                />
               </div>
             </RideTicket>
           ))}
@@ -1295,13 +1380,26 @@ function AdminPanel({ rides, onUpdate, onExit }) {
           )}
           {done.map((r) => (
             <RideTicket key={r.id} ride={r} hotel={HOTELS.find((h) => h.id === r.hotelId)} showHotel>
-              <button
-                onClick={() => onUpdate(r.id, { status: "confermata" })}
+              {r.clientPhone ? (
+                <a
+                  href={`https://wa.me/${r.clientPhone.replace(/\D/g, "")}?text=${encodeURIComponent(
+                    `Gentile ${r.client}, grazie per aver viaggiato con LuxWay! 🚘\nSe il servizio è stato di suo gradimento, una recensione su TripAdvisor per noi vale moltissimo:\n${TRIPADVISOR_URL}\nA presto!`
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block text-center mt-3 py-2 rounded-lg no-underline text-xs font-medium"
+                  style={{ background: T.goldSoft, color: T.gold, border: `1px solid ${T.gold}`, fontFamily: "Jost, sans-serif" }}
+                >
+                  ⭐ Chiedi recensione TripAdvisor all'ospite
+                </a>
+              ) : null}
+              <ActionButton
+                label="↩ Riporta in programma"
+                busyLabel="Riporto…"
+                onAction={() => onUpdate(r.id, { status: "confermata" })}
                 className="mt-3 py-1.5 px-3 rounded-lg text-xs"
                 style={{ color: T.muted, border: `1px solid ${T.line}`, fontFamily: "Jost, sans-serif" }}
-              >
-                ↩ Riporta in programma
-              </button>
+              />
             </RideTicket>
           ))}
         </section>
@@ -1316,13 +1414,13 @@ function AdminPanel({ rides, onUpdate, onExit }) {
           )}
           {rejected.map((r) => (
             <RideTicket key={r.id} ride={r} hotel={HOTELS.find((h) => h.id === r.hotelId)} showHotel>
-              <button
-                onClick={() => onUpdate(r.id, { status: "richiesta" })}
+              <ActionButton
+                label="↩ Ripristina come richiesta"
+                busyLabel="Ripristino…"
+                onAction={() => onUpdate(r.id, { status: "richiesta" })}
                 className="mt-3 py-1.5 px-3 rounded-lg text-xs"
                 style={{ color: T.gold, border: `1px solid ${T.gold}`, fontFamily: "Jost, sans-serif" }}
-              >
-                ↩ Ripristina come richiesta
-              </button>
+              />
             </RideTicket>
           ))}
         </section>
@@ -1421,7 +1519,7 @@ function Row({ label, value, color, big }) {
 
 function RequestCard({ ride, onUpdate }) {
   const [price, setPrice] = useState(ride.price > 0 ? ride.price : "");
-  const [base, setBase] = useState(ride.base > 0 ? ride.base : routeBase(ride.pickup, ride.dropoff, ride.vehicle || suggestVehicle(ride.pax)) || "");
+  const [base, setBase] = useState(ride.base > 0 ? ride.base : routeBase(ride.pickup, ride.dropoff, ride.vehicle || suggestVehicle(ride.pax), ride.hotelId) || "");
   const [driver, setDriver] = useState(ride.driver || DRIVERS[0].name);
   const hotel = HOTELS.find((h) => h.id === ride.hotelId);
   const p = Number(price) || 0;
@@ -1483,8 +1581,10 @@ function RequestCard({ ride, onUpdate }) {
         </div>
       )}
       <div className="mt-3 flex gap-2">
-        <button
-          onClick={() => canConfirm && onUpdate(ride.id, { status: "confermata", price: p, base: b, driver, modified: false })}
+        <ActionButton
+          label="Conferma corsa"
+          busyLabel="Confermo…"
+          onAction={() => onUpdate(ride.id, { status: "confermata", price: p, base: b, driver, modified: false })}
           disabled={!canConfirm}
           className="flex-1 py-2 rounded-lg text-xs font-medium"
           style={{
@@ -1492,16 +1592,14 @@ function RequestCard({ ride, onUpdate }) {
             color: canConfirm ? "#14110A" : T.muted,
             fontFamily: "Jost, sans-serif",
           }}
-        >
-          Conferma corsa
-        </button>
-        <button
-          onClick={() => onUpdate(ride.id, { status: "rifiutata" })}
+        />
+        <ActionButton
+          label="Rifiuta"
+          busyLabel="Rifiuto…"
+          onAction={() => onUpdate(ride.id, { status: "rifiutata" })}
           className="px-4 py-2 rounded-lg text-xs"
           style={{ color: T.red, border: `1px solid ${T.red}`, fontFamily: "Jost, sans-serif" }}
-        >
-          Rifiuta
-        </button>
+        />
       </div>
     </RideTicket>
   );
@@ -1550,8 +1648,16 @@ function LuxWayApp() {
         input[type="date"]::-webkit-calendar-picker-indicator,
         input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(0.7); }
         select option { background: ${T.surface2}; color: ${T.ivory}; }
-        button { cursor: pointer; transition: opacity .15s ease; }
+        button { cursor: pointer; transition: opacity .15s ease, transform .12s ease; }
         button:hover:not(:disabled) { opacity: .88; }
+        button:active:not(:disabled) { transform: scale(.96); }
+        .spin-dot {
+          display: inline-block; width: 12px; height: 12px;
+          border: 2px solid currentColor; border-top-color: transparent;
+          border-radius: 50%; margin-right: 7px; vertical-align: -2px;
+          animation: lwspin .7s linear infinite;
+        }
+        @keyframes lwspin { to { transform: rotate(360deg); } }
         button:disabled { cursor: default; }
         :focus-visible { outline: 2px solid ${T.gold}; outline-offset: 2px; }
         @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
