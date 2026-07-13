@@ -14,6 +14,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>html,body{margin:0;background:#0E1116;overflow-x:clip}</style>
 <script>
@@ -39,9 +40,8 @@ const { useState, useMemo, useRef, useEffect } = React;
    Commissioni fisse per corsa completata: 10 € all'hotel, 2 € alla piattaforma.
    ============================================================ */
 
-// Modello piattaforma: abbonamento mensile (niente fee per corsa).
-const SUB_BASE = 9;      // € / mese, canone base operatore
-const SUB_PER_HOTEL = 5; // € / mese per struttura collegata (+ IVA)
+// Modello piattaforma: abbonamento mensile (9 € + 5 €/hotel + IVA, primo mese gratis).
+// Volutamente NON mostrato nella demo: se ne parla in fase contrattuale.
 // Modello prezzi: il listino è quanto percepisce l'operatore (Carlos).
 // L'hotel sceglie il prezzo al cliente: l'eccedenza sul listino è la sua
 // commissione, entro il supplemento massimo da listino (25 € sui transfer).
@@ -116,6 +116,36 @@ const isPort = (s) => /civitavecchia/i.test(s || "");
 /* Commissione hotel su una corsa: eccedenza del prezzo cliente sul listino */
 const hotelCut = (r) => Math.max(0, (r.price || 0) - (r.base || 0));
 
+/* Export report corse: Excel (.xlsx) se la libreria è disponibile, altrimenti CSV */
+const exportRides = (rows, filename) => {
+  const header = ["Data", "Ora", "Codice", "Hotel", "Ospite", "Tratta", "Pax", "Veicolo", "Autista", "Prezzo cliente €", "Listino €", "Commissione hotel €"];
+  const data = rows.map((r) => {
+    const h = HOTELS.find((x) => x.id === r.hotelId);
+    return [
+      r.date, r.time, r.code, h ? h.name : "", r.client,
+      `${r.pickup} → ${r.dropoff}`, r.pax, vehicleLabel(r.vehicle),
+      r.driver || "", r.price || 0, r.base || 0, hotelCut(r),
+    ];
+  });
+  if (typeof XLSX !== "undefined") {
+    const ws = XLSX.utils.aoa_to_sheet([header, ...data]);
+    ws["!cols"] = header.map((hh, i) => ({ wch: i === 5 ? 48 : Math.max(10, hh.length + 2) }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Corse");
+    XLSX.writeFile(wb, filename + ".xlsx");
+  } else {
+    const csv = [header, ...data]
+      .map((row) => row.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(";"))
+      .join("\n");
+    const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = filename + ".csv";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+};
+
 const DRIVERS = [
   { name: "Carlos", phone: "+39 329 093 7951" },
   { name: "Ari", phone: "+39 320 378 7946" },
@@ -138,8 +168,8 @@ const SEED_RIDES = [
   },
   {
     id: 2, code: "LW-1042", hotelId: "h2", client: "Fam. Dubois", clientPhone: "+33 6 12 34 56 78",
-    date: TODAY, time: "14:15", pickup: "Aeroporto di Ciampino (CIA)",
-    dropoff: "Palazzo Aurora — Piazza Navona 8, Roma", pax: 4, flight: "FR 1226", flightTime: "13:40", vehicle: "car",
+    date: TODAY, time: "13:40", pickup: "Aeroporto di Ciampino (CIA)",
+    dropoff: "Palazzo Aurora — Piazza Navona 8, Roma", pax: 4, flight: "FR 1226", vehicle: "car",
     notes: "Seggiolino bambino", base: 55, price: 70, status: "confermata", driver: "Marco R.",
   },
   {
@@ -309,17 +339,15 @@ function RideTicket({ ride, hotel, children, showHotel }) {
           className="mt-3 pt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs"
           style={{ borderTop: `1px dashed ${T.line}`, color: T.muted }}
         >
-          <span>{dateIT(ride.date)} · ore {ride.time}</span>
+          <span>
+            {dateIT(ride.date)} · {isAirport(ride.pickup) ? "atterraggio" : isPort(ride.pickup) ? "attracco" : "pickup"} ore {ride.time}
+          </span>
           <span>{ride.pax} pax</span>
           {ride.modified ? <span style={{ color: T.gold }}>● Modificata dall'hotel</span> : null}
           {ride.vehicle ? <span>{vehicleLabel(ride.vehicle)}</span> : null}
           {ride.bags > 0 ? <span>{ride.bags} bagagli</span> : null}
-          {ride.flight ? (
-            <span>Volo {ride.flight}{ride.flightTime ? ` · atterra ${ride.flightTime}` : ""}</span>
-          ) : null}
-          {ride.ship ? (
-            <span>Nave {ride.ship}{ride.shipTime ? ` · attracco ${ride.shipTime}` : ""}</span>
-          ) : null}
+          {ride.flight ? <span>Volo {ride.flight}</span> : null}
+          {ride.ship ? <span>Nave {ride.ship}</span> : null}
           {hotelCut(ride) > MAX_MARKUP && ride.status === "richiesta" ? (
             <span style={{ color: T.red }}>Supplemento extra da confermare</span>
           ) : null}
@@ -620,7 +648,7 @@ function HotelPanel({ hotel, rides, onNewRide, onUpdate, onExit }) {
   const empty = {
     client: "", phone: "", date: TODAY, time: "", pickup: hotelLabel(hotel),
     dropoff: "", pax: 2, vehicle: "car", vehicleTouched: false, bags: "",
-    flight: "", flightTime: "", ship: "", shipTime: "", notes: "", price: "",
+    flight: "", ship: "", notes: "", price: "",
   };
   const [form, setForm] = useState(empty);
   const [sent, setSent] = useState(false);
@@ -652,8 +680,8 @@ function HotelPanel({ hotel, rides, onNewRide, onUpdate, onExit }) {
   const valid =
     form.client && form.phone && form.date && form.time && form.pickup && form.dropoff &&
     !priceTooLow &&
-    (!airportArr || (form.flight && form.flightTime)) &&
-    (!portArr || (form.ship && form.shipTime));
+    (!airportArr || form.flight) &&
+    (!portArr || form.ship);
 
   const submit = () => {
     if (!valid) return;
@@ -719,7 +747,7 @@ function HotelPanel({ hotel, rides, onNewRide, onUpdate, onExit }) {
               <Field label="Data">
                 <Input type="date" value={form.date} onChange={set("date")} />
               </Field>
-              <Field label="Ora">
+              <Field label={airportArr ? "Orario di atterraggio" : portArr ? "Orario di attracco" : "Ora pickup"}>
                 <Input type="time" value={form.time} onChange={set("time")} />
               </Field>
             </div>
@@ -795,24 +823,14 @@ function HotelPanel({ hotel, rides, onNewRide, onUpdate, onExit }) {
               </select>
             </Field>
             {airportArr && (
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Volo in arrivo">
-                  <Input value={form.flight} onChange={set("flight")} placeholder="Es. AZ 1734" />
-                </Field>
-                <Field label="Orario di atterraggio">
-                  <Input type="time" value={form.flightTime} onChange={set("flightTime")} />
-                </Field>
-              </div>
+              <Field label="Volo in arrivo (l'autista monitora l'atterraggio)">
+                <Input value={form.flight} onChange={set("flight")} placeholder="Es. AZ 1734" />
+              </Field>
             )}
             {portArr && (
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Nave / Crociera">
-                  <Input value={form.ship} onChange={set("ship")} placeholder="Es. MSC Divina" />
-                </Field>
-                <Field label="Orario di attracco">
-                  <Input type="time" value={form.shipTime} onChange={set("shipTime")} />
-                </Field>
-              </div>
+              <Field label="Nave / Crociera in arrivo">
+                <Input value={form.ship} onChange={set("ship")} placeholder="Es. MSC Divina" />
+              </Field>
             )}
             {!airportArr && !portArr && (
               <Field label="Volo (opzionale, per partenze verso l'aeroporto)">
@@ -912,6 +930,15 @@ function HotelPanel({ hotel, rides, onNewRide, onUpdate, onExit }) {
                 <span style={{ color: T.green }}>+ {eur(hotelCut(r))}</span>
               </div>
             ))}
+            {completed.length > 0 && (
+              <button
+                onClick={() => exportRides(completed, "commissioni-" + hotel.name.toLowerCase().replace(/[^a-z0-9]+/g, "-"))}
+                className="mt-4 w-full py-2 rounded-lg text-xs font-medium"
+                style={{ color: T.gold, border: `1px solid ${T.gold}`, background: "transparent", fontFamily: "Jost, sans-serif" }}
+              >
+                ⬇ Esporta commissioni (Excel)
+              </button>
+            )}
           </div>
         </section>
       )}
@@ -936,7 +963,7 @@ function HotelRideCard({ ride, hotel, onUpdate }) {
     setForm({
       date: ride.date, time: ride.time, pickup: ride.pickup, dropoff: ride.dropoff,
       pax: ride.pax, vehicle: ride.vehicle || suggestVehicle(ride.pax),
-      flight: ride.flight || "", notes: ride.notes || "", phone: ride.clientPhone || "",
+      flight: ride.flight || "", ship: ride.ship || "", notes: ride.notes || "", phone: ride.clientPhone || "",
       price: ride.price > 0 ? ride.price : "",
     });
     setEditing(true);
@@ -1003,7 +1030,9 @@ function HotelRideCard({ ride, hotel, onUpdate }) {
         <div className="mt-3 pt-3 space-y-3" style={{ borderTop: `1px dashed ${T.line}` }}>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Data"><Input type="date" value={form.date} onChange={set("date")} /></Field>
-            <Field label="Ora"><Input type="time" value={form.time} onChange={set("time")} /></Field>
+            <Field label={isAirport(form.pickup) ? "Orario di atterraggio" : isPort(form.pickup) ? "Orario di attracco" : "Ora pickup"}>
+              <Input type="time" value={form.time} onChange={set("time")} />
+            </Field>
           </div>
           <Field label="Partenza">
             <Input value={form.pickup} onChange={set("pickup")} />
@@ -1017,6 +1046,9 @@ function HotelRideCard({ ride, hotel, onUpdate }) {
             <Field label="Passeggeri"><Input type="number" min="1" max="8" value={form.pax} onChange={set("pax")} /></Field>
             <Field label="Volo (opzionale)"><Input value={form.flight} onChange={set("flight")} /></Field>
           </div>
+          {isPort(form.pickup) && (
+            <Field label="Nave / Crociera"><Input value={form.ship} onChange={set("ship")} /></Field>
+          )}
           <Field label="Veicolo">
             <select
               value={form.vehicle}
@@ -1094,7 +1126,6 @@ function AdminPanel({ rides, onUpdate, onExit }) {
   const revenue = done.reduce((s, r) => s + r.price, 0);
   const hotelDue = done.reduce((s, r) => s + hotelCut(r), 0);
   const net = revenue - hotelDue;
-  const canone = SUB_BASE + SUB_PER_HOTEL * HOTELS.length;
 
   const tabs = [
     ["richieste", `Richieste (${requests.length})`],
@@ -1159,13 +1190,13 @@ function AdminPanel({ rides, onUpdate, onExit }) {
                 <a
                   href={`https://wa.me/${driverPhone(r.driver).replace(/\D/g, "")}?text=${encodeURIComponent(
                     `🚘 LuxWay · Ordine di servizio ${r.code}\n` +
-                    `${dateIT(r.date)} · pickup ore ${r.time}\n` +
+                    `${dateIT(r.date)} · ${isAirport(r.pickup) ? "atterraggio" : isPort(r.pickup) ? "attracco" : "pickup"} ore ${r.time}\n` +
                     `Ospite: ${r.client}${r.clientPhone ? ` (${r.clientPhone})` : ""}\n` +
                     `Da: ${r.pickup}\n` +
                     `A: ${r.dropoff}\n` +
                     `${r.pax} pax · ${vehicleLabel(r.vehicle)}${r.bags > 0 ? ` · ${r.bags} bagagli` : ""}` +
-                    `${r.flight ? `\nVolo ${r.flight}${r.flightTime ? ` · atterra ${r.flightTime}` : ""}` : ""}` +
-                    `${r.ship ? `\nNave ${r.ship}${r.shipTime ? ` · attracco ${r.shipTime}` : ""}` : ""}` +
+                    `${r.flight ? `\nVolo ${r.flight}` : ""}` +
+                    `${r.ship ? `\nNave ${r.ship}` : ""}` +
                     `${r.notes ? `\nNote: ${r.notes}` : ""}` +
                     `\nIncasso: ${eur(r.price)}`
                   )}`}
@@ -1251,26 +1282,16 @@ function AdminPanel({ rides, onUpdate, onExit }) {
             <div style={{ borderTop: `1px dashed ${T.line}` }} className="pt-3">
               <Row label="Netto Carlos" value={eur(net)} color={T.green} big />
             </div>
+            <button
+              onClick={() => exportRides(done, "luxway-report-corse")}
+              className="mt-4 w-full py-2 rounded-lg text-xs font-medium"
+              style={{ color: T.gold, border: `1px solid ${T.gold}`, background: "transparent", fontFamily: "Jost, sans-serif" }}
+            >
+              ⬇ Esporta report corse (Excel)
+            </button>
           </div>
           <div
             className="rounded-xl p-4 mt-4 lg:mt-0"
-            style={{ background: T.surface, border: `1px solid ${T.line}` }}
-          >
-            <div className="text-xs uppercase tracking-widest mb-3" style={{ color: T.muted, fontFamily: "Jost, sans-serif" }}>
-              Abbonamento piattaforma
-            </div>
-            <Row label={`Canone base`} value={eur(SUB_BASE)} color={T.ivory} />
-            <Row label={`Strutture collegate (${HOTELS.length} × ${eur(SUB_PER_HOTEL)})`} value={eur(SUB_PER_HOTEL * HOTELS.length)} color={T.ivory} />
-            <div style={{ borderTop: `1px dashed ${T.line}` }} className="pt-3 mt-1">
-              <Row label="Totale mensile (+ IVA)" value={eur(canone)} color={T.gold} />
-            </div>
-            <p className="text-xs mt-2" style={{ color: T.muted, fontFamily: "Jost, sans-serif" }}>
-              Nessuna commissione sulle corse: l'incasso delle corse resta interamente tuo.
-            </p>
-          </div>
-
-          <div
-            className="rounded-xl p-4 mt-4 lg:mt-4"
             style={{ background: T.surface, border: `1px solid ${T.line}` }}
           >
             <div className="text-xs uppercase tracking-widest mb-3" style={{ color: T.muted, fontFamily: "Jost, sans-serif" }}>
