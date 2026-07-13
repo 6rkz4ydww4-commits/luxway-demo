@@ -15,7 +15,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
-<style>html,body{margin:0;background:#0E1116;overflow-x:hidden;overscroll-behavior:none}</style>
+<style>html,body{margin:0;background:#0E1116;overflow-x:clip}</style>
 <script>
 window.addEventListener("error", function (e) {
   if (!e.message || e.message.indexOf("Script error") === 0) return;
@@ -39,10 +39,13 @@ const { useState, useMemo, useRef, useEffect } = React;
    Commissioni fisse per corsa completata: 10 € all'hotel, 2 € alla piattaforma.
    ============================================================ */
 
-const PLATFORM_FEE = 2; // € per corsa completata, alla piattaforma
+// Modello piattaforma: abbonamento mensile (niente fee per corsa).
+const SUB_BASE = 9;      // € / mese, canone base operatore
+const SUB_PER_HOTEL = 5; // € / mese per struttura collegata (+ IVA)
 // Modello prezzi: il listino è quanto percepisce l'operatore (Carlos).
-// L'hotel sceglie liberamente il prezzo al cliente: l'eccedenza sul listino
-// è la commissione dell'hotel. Es: listino FCO 60 €, prezzo 70 € → 10 € all'hotel.
+// L'hotel sceglie il prezzo al cliente: l'eccedenza sul listino è la sua
+// commissione, entro il supplemento massimo da listino (25 € sui transfer).
+const MAX_MARKUP = 25;
 
 /* Date dinamiche: la demo è sempre "fresca" qualunque giorno la apri */
 const _d = (offset) => {
@@ -75,6 +78,7 @@ const T = {
 
 const HOTELS = [
   { id: "h4", name: "Domus Liberius", address: "Via Liberiana 17, Roma" },
+  { id: "h5", name: "Globus Hotel Best Western", address: "Viale Ippocrate 119, Roma" },
   { id: "h1", name: "Grand Hotel Riviera", address: "Via Veneto 12, Roma" },
   { id: "h2", name: "Palazzo Aurora", address: "Piazza Navona 8, Roma" },
   { id: "h3", name: "Boutique Hotel Bellavista", address: "Via della Scala 23, Roma" },
@@ -83,24 +87,31 @@ const HOTELS = [
 /* Numero WhatsApp Business di LuxWay (segnaposto — da sostituire col numero reale) */
 const WHATSAPP_NUMBER = "393290937951";
 
-/* Luoghi frequenti e LISTINO operatore hotel ↔ luogo (valori d'esempio, da sostituire col listino ufficiale) */
+/* LISTINO UFFICIALE LuxWay (tariffe nette hotel): berlina/SUV fino a 4 pax, van 5–8 pax */
 const PLACES = [
-  { key: "Fiumicino", label: "Aeroporto di Fiumicino (FCO)", base: 60 },
-  { key: "Ciampino", label: "Aeroporto di Ciampino (CIA)", base: 60 },
-  { key: "Civitavecchia", label: "Porto di Civitavecchia", base: 110 },
+  { key: "Fiumicino", label: "Aeroporto di Fiumicino (FCO)", car: 55, van: 75 },
+  { key: "Ciampino", label: "Aeroporto di Ciampino (CIA)", car: 55, van: 75 },
+  { key: "Civitavecchia", label: "Porto di Civitavecchia", car: 160, van: 180 },
 ];
 
 const hotelLabel = (h) => `${h.name} — ${h.address}`;
 
-/* Se la tratta è hotel ↔ luogo frequente, restituisce il listino operatore */
-const routeBase = (pickup, dropoff) => {
+/* Listino operatore per la tratta: dipende dal VEICOLO scelto (suggerito dai pax, confermato dall'utente) */
+const routeBase = (pickup, dropoff, vehicle) => {
   const find = (s) => PLACES.find((p) => (s || "").toLowerCase().includes(p.key.toLowerCase()));
   const a = find(pickup);
   const b = find(dropoff);
-  if (a && !b) return a.base;
-  if (b && !a) return b.base;
-  return 0;
+  const place = a && !b ? a : b && !a ? b : null;
+  if (!place) return 0;
+  return vehicle === "van" ? place.van : place.car;
 };
+
+const suggestVehicle = (pax) => ((Number(pax) || 1) <= 4 ? "car" : "van");
+const vehicleLabel = (v) => (v === "van" ? "Van (5–8 pax)" : "Berlina/SUV");
+
+/* Rileva il tipo di punto di partenza per i campi di arrivo */
+const isAirport = (s) => /fiumicino|ciampino/i.test(s || "");
+const isPort = (s) => /civitavecchia/i.test(s || "");
 
 /* Commissione hotel su una corsa: eccedenza del prezzo cliente sul listino */
 const hotelCut = (r) => Math.max(0, (r.price || 0) - (r.base || 0));
@@ -122,32 +133,32 @@ const SEED_RIDES = [
   {
     id: 1, code: "LW-1041", hotelId: "h1", client: "Sig. Andersen", clientPhone: "+45 20 12 34 56",
     date: TODAY, time: "09:30", pickup: "Grand Hotel Riviera — Via Veneto 12, Roma",
-    dropoff: "Aeroporto di Fiumicino (FCO)", pax: 2, flight: "AZ 1734",
-    notes: "2 valigie grandi", base: 60, price: 70, status: "completata", driver: "Carlos",
+    dropoff: "Aeroporto di Fiumicino (FCO)", pax: 2, flight: "AZ 1734", vehicle: "car",
+    notes: "2 valigie grandi", base: 55, price: 70, status: "completata", driver: "Carlos",
   },
   {
     id: 2, code: "LW-1042", hotelId: "h2", client: "Fam. Dubois", clientPhone: "+33 6 12 34 56 78",
     date: TODAY, time: "14:15", pickup: "Aeroporto di Ciampino (CIA)",
-    dropoff: "Palazzo Aurora — Piazza Navona 8, Roma", pax: 4, flight: "FR 1226",
-    notes: "Seggiolino bambino", base: 60, price: 70, status: "confermata", driver: "Marco R.",
+    dropoff: "Palazzo Aurora — Piazza Navona 8, Roma", pax: 4, flight: "FR 1226", flightTime: "13:40", vehicle: "car",
+    notes: "Seggiolino bambino", base: 55, price: 70, status: "confermata", driver: "Marco R.",
   },
   {
     id: 3, code: "LW-1043", hotelId: "h1", client: "Sig.ra Keller", clientPhone: "+49 171 234 5678",
     date: TOMORROW, time: "08:00", pickup: "Grand Hotel Riviera",
-    dropoff: "Stazione Centrale", pax: 1, flight: "",
+    dropoff: "Stazione Centrale", pax: 1, flight: "", vehicle: "car",
     notes: "", base: 0, price: 45, status: "richiesta", driver: "",
   },
   {
     id: 4, code: "LW-1044", hotelId: "h3", client: "Mr. & Mrs. Ito", clientPhone: "+81 90 1234 5678",
     date: TOMORROW, time: "18:45", pickup: "Boutique Hotel Bellavista",
-    dropoff: "Ristorante La Terrazza", pax: 2, flight: "",
+    dropoff: "Ristorante La Terrazza", pax: 2, flight: "", vehicle: "car",
     notes: "Ritorno ore 23:00 da concordare", base: 0, price: 0, status: "richiesta", driver: "",
   },
   {
     id: 5, code: "LW-1045", hotelId: "h4", client: "Sig.ra Novak", clientPhone: "+41 79 123 45 67",
     date: TOMORROW, time: "06:15", pickup: "Domus Liberius — Via Liberiana 17, Roma",
-    dropoff: "Aeroporto di Fiumicino (FCO)", pax: 2, flight: "LH 233",
-    notes: "Partenza presto, colazione al sacco", base: 60, price: 70, status: "richiesta", driver: "",
+    dropoff: "Aeroporto di Fiumicino (FCO)", pax: 2, flight: "LH 233", vehicle: "car",
+    notes: "Partenza presto, colazione al sacco", base: 55, price: 70, status: "richiesta", driver: "",
   },
 ];
 
@@ -301,7 +312,17 @@ function RideTicket({ ride, hotel, children, showHotel }) {
           <span>{dateIT(ride.date)} · ore {ride.time}</span>
           <span>{ride.pax} pax</span>
           {ride.modified ? <span style={{ color: T.gold }}>● Modificata dall'hotel</span> : null}
-          {ride.flight ? <span>Volo {ride.flight}</span> : null}
+          {ride.vehicle ? <span>{vehicleLabel(ride.vehicle)}</span> : null}
+          {ride.bags > 0 ? <span>{ride.bags} bagagli</span> : null}
+          {ride.flight ? (
+            <span>Volo {ride.flight}{ride.flightTime ? ` · atterra ${ride.flightTime}` : ""}</span>
+          ) : null}
+          {ride.ship ? (
+            <span>Nave {ride.ship}{ride.shipTime ? ` · attracco ${ride.shipTime}` : ""}</span>
+          ) : null}
+          {hotelCut(ride) > MAX_MARKUP && ride.status === "richiesta" ? (
+            <span style={{ color: T.red }}>Supplemento extra da confermare</span>
+          ) : null}
           {ride.clientPhone ? (
             <a href={`tel:${ride.clientPhone.replace(/\s/g, "")}`} className="no-underline" style={{ color: T.ivory }}>
               ☏ Ospite {ride.clientPhone}
@@ -598,16 +619,29 @@ function HotelPanel({ hotel, rides, onNewRide, onUpdate, onExit }) {
   const [tab, setTab] = useState("nuova");
   const empty = {
     client: "", phone: "", date: TODAY, time: "", pickup: hotelLabel(hotel),
-    dropoff: "", pax: 2, flight: "", notes: "", price: "",
+    dropoff: "", pax: 2, vehicle: "car", vehicleTouched: false, bags: "",
+    flight: "", flightTime: "", ship: "", shipTime: "", notes: "", price: "",
   };
   const [form, setForm] = useState(empty);
   const [sent, setSent] = useState(false);
 
   const quickOptions = [hotelLabel(hotel), ...PLACES.map((p) => p.label)];
-  const base = routeBase(form.pickup, form.dropoff);
+  const base = routeBase(form.pickup, form.dropoff, form.vehicle);
   const priceNum = Number(form.price) || 0;
   const commission = base > 0 && priceNum > 0 ? priceNum - base : 0;
   const priceTooLow = base > 0 && priceNum > 0 && priceNum < base;
+  const overCap = base > 0 && priceNum > base + MAX_MARKUP;
+  const airportArr = isAirport(form.pickup);
+  const portArr = isPort(form.pickup);
+
+  const setPax = (e) => {
+    const pax = e.target.value;
+    setForm((f) => ({
+      ...f, pax,
+      vehicle: f.vehicleTouched ? f.vehicle : suggestVehicle(pax),
+    }));
+  };
+  const setVehicle = (e) => setForm((f) => ({ ...f, vehicle: e.target.value, vehicleTouched: true }));
 
   const mine = rides.filter((r) => r.hotelId === hotel.id);
   const completed = mine.filter((r) => r.status === "completata");
@@ -615,7 +649,11 @@ function HotelPanel({ hotel, rides, onNewRide, onUpdate, onExit }) {
   const pending = mine.filter((r) => r.status === "confermata").reduce((s, r) => s + hotelCut(r), 0);
 
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
-  const valid = form.client && form.phone && form.date && form.time && form.pickup && form.dropoff && !priceTooLow;
+  const valid =
+    form.client && form.phone && form.date && form.time && form.pickup && form.dropoff &&
+    !priceTooLow &&
+    (!airportArr || (form.flight && form.flightTime)) &&
+    (!portArr || (form.ship && form.shipTime));
 
   const submit = () => {
     if (!valid) return;
@@ -623,9 +661,11 @@ function HotelPanel({ hotel, rides, onNewRide, onUpdate, onExit }) {
       ...form,
       clientPhone: form.phone,
       pax: Number(form.pax) || 1,
+      bags: Number(form.bags) || 0,
       hotelId: hotel.id,
       base,
       price: priceNum > 0 ? priceNum : base,
+      extraMarkup: overCap,
     });
     setForm(empty);
     setSent(true);
@@ -706,13 +746,27 @@ function HotelPanel({ hotel, rides, onNewRide, onUpdate, onExit }) {
                   className="text-xs rounded-lg px-3 py-2"
                   style={{ background: T.goldSoft, color: T.gold, fontFamily: "Jost, sans-serif" }}
                 >
-                  Listino LuxWay: <b style={{ fontFamily: "Marcellus, serif" }}>{eur(base)}</b>
+                  Listino LuxWay ({vehicleLabel(form.pax)}): <b style={{ fontFamily: "Marcellus, serif" }}>{eur(base)}</b>
                 </div>
               )}
             </div>
             {priceTooLow && (
               <div className="text-xs rounded-lg px-3 py-2" style={{ background: T.redSoft, color: T.red, fontFamily: "Jost, sans-serif" }}>
                 Il prezzo al cliente non può essere inferiore al listino ({eur(base)}).
+              </div>
+            )}
+            {overCap && !priceTooLow && (
+              <div className="text-xs rounded-lg px-3 py-2" style={{ background: T.goldSoft, color: T.gold, fontFamily: "Jost, sans-serif" }}>
+                Supplemento oltre il massimo da listino ({eur(MAX_MARKUP)}): serve la conferma di Carlos.
+                <a
+                  href={`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(`Salve Carlos, vorrei applicare un supplemento di ${commission} € (prezzo ${priceNum} €) sulla corsa per ${form.dropoff} del ${dateIT(form.date)}: confermi?`)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block text-center mt-2 py-2 rounded-lg no-underline font-medium"
+                  style={{ background: "#25D366", color: "#0B141A" }}
+                >
+                  Chiedi conferma a Carlos su WhatsApp
+                </a>
               </div>
             )}
             {commission > 0 && !priceTooLow && (
@@ -723,12 +777,48 @@ function HotelPanel({ hotel, rides, onNewRide, onUpdate, onExit }) {
             )}
             <div className="grid grid-cols-2 gap-3">
               <Field label="Passeggeri">
-                <Input type="number" min="1" max="8" value={form.pax} onChange={set("pax")} />
+                <Input type="number" min="1" max="8" value={form.pax} onChange={setPax} />
               </Field>
-              <Field label="Volo (opzionale)">
-                <Input value={form.flight} onChange={set("flight")} placeholder="Es. AZ 1734" />
+              <Field label="Bagagli (opzionale)">
+                <Input type="number" min="0" max="12" value={form.bags} onChange={set("bags")} placeholder="0" />
               </Field>
             </div>
+            <Field label="Veicolo (suggerito dai passeggeri — conferma tu)">
+              <select
+                value={form.vehicle}
+                onChange={setVehicle}
+                className="w-full rounded-lg px-3 py-2 text-base outline-none"
+                style={inputStyle}
+              >
+                <option value="car">Berlina/SUV · fino a 4 pax</option>
+                <option value="van">Van · 5–8 pax o bagagli extra</option>
+              </select>
+            </Field>
+            {airportArr && (
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Volo in arrivo">
+                  <Input value={form.flight} onChange={set("flight")} placeholder="Es. AZ 1734" />
+                </Field>
+                <Field label="Orario di atterraggio">
+                  <Input type="time" value={form.flightTime} onChange={set("flightTime")} />
+                </Field>
+              </div>
+            )}
+            {portArr && (
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Nave / Crociera">
+                  <Input value={form.ship} onChange={set("ship")} placeholder="Es. MSC Divina" />
+                </Field>
+                <Field label="Orario di attracco">
+                  <Input type="time" value={form.shipTime} onChange={set("shipTime")} />
+                </Field>
+              </div>
+            )}
+            {!airportArr && !portArr && (
+              <Field label="Volo (opzionale, per partenze verso l'aeroporto)">
+                <Input value={form.flight} onChange={set("flight")} placeholder="Es. AZ 1734" />
+              </Field>
+            )}
             <Field label="Note per l'autista">
               <Input value={form.notes} onChange={set("notes")} placeholder="Bagagli, seggiolino, richieste…" />
             </Field>
@@ -845,15 +935,17 @@ function HotelRideCard({ ride, hotel, onUpdate }) {
   const startEdit = () => {
     setForm({
       date: ride.date, time: ride.time, pickup: ride.pickup, dropoff: ride.dropoff,
-      pax: ride.pax, flight: ride.flight || "", notes: ride.notes || "", phone: ride.clientPhone || "",
+      pax: ride.pax, vehicle: ride.vehicle || suggestVehicle(ride.pax),
+      flight: ride.flight || "", notes: ride.notes || "", phone: ride.clientPhone || "",
       price: ride.price > 0 ? ride.price : "",
     });
     setEditing(true);
   };
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
-  const editBase = form ? (ride.status === "richiesta" ? routeBase(form.pickup, form.dropoff) : ride.base || 0) : 0;
+  const editBase = form ? (ride.status === "richiesta" ? routeBase(form.pickup, form.dropoff, form.vehicle) : ride.base || 0) : 0;
   const editPrice = form ? Number(form.price) || 0 : 0;
   const editTooLow = editBase > 0 && editPrice > 0 && editPrice < editBase;
+  const editOverCap = editBase > 0 && editPrice > editBase + MAX_MARKUP;
   const valid = form && form.date && form.time && form.pickup && form.dropoff && !editTooLow;
 
   const save = () => {
@@ -864,7 +956,9 @@ function HotelRideCard({ ride, hotel, onUpdate }) {
       clientPhone: form.phone, modified: true,
     };
     if (ride.status === "richiesta") patch.base = editBase;
+    patch.vehicle = form.vehicle;
     patch.price = editPrice > 0 ? editPrice : editBase;
+    patch.extraMarkup = editOverCap;
     onUpdate(ride.id, patch);
     setEditing(false);
     setSaved(true);
@@ -923,6 +1017,17 @@ function HotelRideCard({ ride, hotel, onUpdate }) {
             <Field label="Passeggeri"><Input type="number" min="1" max="8" value={form.pax} onChange={set("pax")} /></Field>
             <Field label="Volo (opzionale)"><Input value={form.flight} onChange={set("flight")} /></Field>
           </div>
+          <Field label="Veicolo">
+            <select
+              value={form.vehicle}
+              onChange={set("vehicle")}
+              className="w-full rounded-lg px-3 py-2 text-base outline-none"
+              style={inputStyle}
+            >
+              <option value="car">Berlina/SUV · fino a 4 pax</option>
+              <option value="van">Van · 5–8 pax o bagagli extra</option>
+            </select>
+          </Field>
           <Field label="Telefono ospite"><Input type="tel" value={form.phone} onChange={set("phone")} /></Field>
           <Field label="Note per l'autista"><Input value={form.notes} onChange={set("notes")} /></Field>
           <Field label="Prezzo al cliente (€)">
@@ -931,6 +1036,11 @@ function HotelRideCard({ ride, hotel, onUpdate }) {
           {editTooLow && (
             <div className="text-xs rounded-lg px-3 py-2" style={{ background: T.redSoft, color: T.red, fontFamily: "Jost, sans-serif" }}>
               Il prezzo non può essere inferiore al listino ({eur(editBase)}).
+            </div>
+          )}
+          {editOverCap && !editTooLow && (
+            <div className="text-xs rounded-lg px-3 py-2" style={{ background: T.goldSoft, color: T.gold, fontFamily: "Jost, sans-serif" }}>
+              Supplemento oltre il massimo ({eur(MAX_MARKUP)}): serve la conferma di Carlos.
             </div>
           )}
           <div className="flex gap-2">
@@ -983,8 +1093,8 @@ function AdminPanel({ rides, onUpdate, onExit }) {
 
   const revenue = done.reduce((s, r) => s + r.price, 0);
   const hotelDue = done.reduce((s, r) => s + hotelCut(r), 0);
-  const platformDue = done.length * PLATFORM_FEE;
-  const net = revenue - hotelDue - platformDue;
+  const net = revenue - hotelDue;
+  const canone = SUB_BASE + SUB_PER_HOTEL * HOTELS.length;
 
   const tabs = [
     ["richieste", `Richieste (${requests.length})`],
@@ -1045,6 +1155,28 @@ function AdminPanel({ rides, onUpdate, onExit }) {
           )}
           {planned.map((r) => (
             <RideTicket key={r.id} ride={r} hotel={HOTELS.find((h) => h.id === r.hotelId)} showHotel>
+              {r.driver && driverPhone(r.driver) ? (
+                <a
+                  href={`https://wa.me/${driverPhone(r.driver).replace(/\D/g, "")}?text=${encodeURIComponent(
+                    `🚘 LuxWay · Ordine di servizio ${r.code}\n` +
+                    `${dateIT(r.date)} · pickup ore ${r.time}\n` +
+                    `Ospite: ${r.client}${r.clientPhone ? ` (${r.clientPhone})` : ""}\n` +
+                    `Da: ${r.pickup}\n` +
+                    `A: ${r.dropoff}\n` +
+                    `${r.pax} pax · ${vehicleLabel(r.vehicle)}${r.bags > 0 ? ` · ${r.bags} bagagli` : ""}` +
+                    `${r.flight ? `\nVolo ${r.flight}${r.flightTime ? ` · atterra ${r.flightTime}` : ""}` : ""}` +
+                    `${r.ship ? `\nNave ${r.ship}${r.shipTime ? ` · attracco ${r.shipTime}` : ""}` : ""}` +
+                    `${r.notes ? `\nNote: ${r.notes}` : ""}` +
+                    `\nIncasso: ${eur(r.price)}`
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block text-center mt-3 py-2 rounded-lg no-underline text-xs font-medium"
+                  style={{ background: "#25D366", color: "#0B141A", fontFamily: "Jost, sans-serif" }}
+                >
+                  📲 Invia ordine a {r.driver} su WhatsApp
+                </a>
+              ) : null}
               <div className="mt-3 flex gap-2">
                 <button
                   onClick={() => onUpdate(r.id, { status: "completata", modified: false })}
@@ -1116,13 +1248,29 @@ function AdminPanel({ rides, onUpdate, onExit }) {
           >
             <Row label="Incasso corse completate" value={eur(revenue)} color={T.ivory} />
             <Row label="Commissioni hotel (eccedenza su listino)" value={`− ${eur(hotelDue)}`} color={T.red} />
-            <Row label={`Quota piattaforma LuxWay (${eur(PLATFORM_FEE)} / corsa)`} value={`− ${eur(platformDue)}`} color={T.red} />
             <div style={{ borderTop: `1px dashed ${T.line}` }} className="pt-3">
               <Row label="Netto Carlos" value={eur(net)} color={T.green} big />
             </div>
           </div>
           <div
             className="rounded-xl p-4 mt-4 lg:mt-0"
+            style={{ background: T.surface, border: `1px solid ${T.line}` }}
+          >
+            <div className="text-xs uppercase tracking-widest mb-3" style={{ color: T.muted, fontFamily: "Jost, sans-serif" }}>
+              Abbonamento piattaforma
+            </div>
+            <Row label={`Canone base`} value={eur(SUB_BASE)} color={T.ivory} />
+            <Row label={`Strutture collegate (${HOTELS.length} × ${eur(SUB_PER_HOTEL)})`} value={eur(SUB_PER_HOTEL * HOTELS.length)} color={T.ivory} />
+            <div style={{ borderTop: `1px dashed ${T.line}` }} className="pt-3 mt-1">
+              <Row label="Totale mensile (+ IVA)" value={eur(canone)} color={T.gold} />
+            </div>
+            <p className="text-xs mt-2" style={{ color: T.muted, fontFamily: "Jost, sans-serif" }}>
+              Nessuna commissione sulle corse: l'incasso delle corse resta interamente tuo.
+            </p>
+          </div>
+
+          <div
+            className="rounded-xl p-4 mt-4 lg:mt-4"
             style={{ background: T.surface, border: `1px solid ${T.line}` }}
           >
             <div className="text-xs uppercase tracking-widest mb-3" style={{ color: T.muted, fontFamily: "Jost, sans-serif" }}>
@@ -1166,7 +1314,7 @@ function Row({ label, value, color, big }) {
 
 function RequestCard({ ride, onUpdate }) {
   const [price, setPrice] = useState(ride.price > 0 ? ride.price : "");
-  const [base, setBase] = useState(ride.base > 0 ? ride.base : routeBase(ride.pickup, ride.dropoff) || "");
+  const [base, setBase] = useState(ride.base > 0 ? ride.base : routeBase(ride.pickup, ride.dropoff, ride.vehicle || suggestVehicle(ride.pax)) || "");
   const [driver, setDriver] = useState(ride.driver || DRIVERS[0].name);
   const hotel = HOTELS.find((h) => h.id === ride.hotelId);
   const p = Number(price) || 0;
@@ -1213,9 +1361,13 @@ function RequestCard({ ride, onUpdate }) {
           className="mt-2 text-xs rounded-lg px-3 py-2 flex flex-wrap gap-x-4 gap-y-1"
           style={{ background: T.goldSoft, fontFamily: "Jost, sans-serif" }}
         >
-          <span style={{ color: T.ivory }}>A te: {eur(b - PLATFORM_FEE)}</span>
-          <span style={{ color: T.gold }}>Hotel: {eur(p - b)}</span>
-          <span style={{ color: T.muted }}>LuxWay: {eur(PLATFORM_FEE)}</span>
+          <span style={{ color: T.ivory }}>A te: {eur(b)}</span>
+          <span style={{ color: T.gold }}>Commissione hotel: {eur(p - b)}</span>
+        </div>
+      )}
+      {canConfirm && p - b > MAX_MARKUP && (
+        <div className="mt-2 text-xs rounded-lg px-3 py-2" style={{ background: T.redSoft, color: T.red, fontFamily: "Jost, sans-serif" }}>
+          Supplemento oltre il massimo da listino ({eur(MAX_MARKUP)}): verifica con l'hotel.
         </div>
       )}
       {p > 0 && b > 0 && p < b && (
@@ -1279,8 +1431,8 @@ function LuxWayApp() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@300;400;500;600&display=swap');
         * { box-sizing: border-box; }
-        html, body { margin: 0; overflow-x: hidden; overscroll-behavior: none; background: ${T.bg}; }
-        body { touch-action: pan-y; }
+        html { overflow-x: clip; }
+        body { margin: 0; min-height: 100vh; overflow-x: clip; overscroll-behavior-y: contain; background: ${T.bg}; }
         input, select, textarea { min-width: 0; max-width: 100%; }
         input[type="date"], input[type="time"] {
           -webkit-appearance: none; appearance: none;
