@@ -79,14 +79,25 @@ const T = {
 const HOTELS = [
   { id: "h4", name: "Domus Liberius", address: "Via Liberiana 17, Roma", pwd: "domus2026" },
   { id: "h5", name: "Globus Hotel Best Western", address: "Viale Ippocrate 119, Roma", pwd: "globus2026" },
-  { id: "h1", name: "Grand Hotel Riviera", address: "Via Veneto 12, Roma", pwd: "hotel2026" },
-  { id: "h2", name: "Palazzo Aurora", address: "Piazza Navona 8, Roma", pwd: "hotel2026" },
-  { id: "h3", name: "Boutique Hotel Bellavista", address: "Via della Scala 23, Roma", pwd: "hotel2026" },
+  { id: "h6", name: "Lodge Hotel", address: "Via M. Buonarroti 19, Roma (da confermare)", pwd: "lodge2026" },
+  { id: "h7", name: "Suite Sistina for Brave Lovers", address: "Via Sistina 54, Roma", pwd: "sistina2026" },
+  { id: "h8", name: "Nosdom Properties", address: "Via Matteo Boiardo 19, Roma", pwd: "nosdom2026" },
+  { id: "h9", name: "Vatican Plaza", address: "Zona Vaticano, Roma (da confermare)", pwd: "vatican2026" },
+  { id: "h10", name: "Fantini Rooms", address: "Via Urbana 33, Roma", pwd: "fantini2026" },
+  { id: "h11", name: "Rome Hotel Sicilia", address: "Via Sicilia 24, Roma (da confermare)", pwd: "sicilia2026" },
+  { id: "h12", name: "Rome Art Hotel", address: "Via dei Due Macelli 120, Roma", pwd: "romeart2026" },
+  { id: "h13", name: "Star Hotel", address: "Via Palestro 49, Roma (da confermare)", pwd: "star2026" },
+  { id: "h14", name: "Four Rivers Suites", address: "Corso Vittorio Emanuele II 173, Roma", pwd: "fourrivers2026" },
 ];
 
-/* Accordi tariffari specifici per struttura (override del listino standard) */
+/* Accordi tariffari specifici per struttura (override del listino standard).
+   Default: FCO/CIA 60/75 · Civitavecchia 160/190. */
 const HOTEL_RATES = {
-  h5: { Fiumicino: { car: 55 }, Ciampino: { car: 55 } }, // Globus: berlina a 55 €
+  h5:  { Fiumicino: { car: 55 }, Ciampino: { car: 55 } },                                  // Globus (cash)
+  h7:  { Fiumicino: { car: 55 }, Ciampino: { car: 55 } },                                  // Suite Sistina
+  h10: { Fiumicino: { car: 55 }, Ciampino: { car: 55 }, Civitavecchia: { van: 180 } },     // Fantini Rooms
+  h12: { Fiumicino: { car: 55 }, Ciampino: { car: 55 }, Civitavecchia: { van: 180 } },     // Rome Art Hotel
+  h11: { Civitavecchia: { car: 165 } },  // Hotel Sicilia (andata APT 60 / ritorno 65: gestire a mano, v. note)
 };
 
 /* Numero WhatsApp Business di LuxWay (segnaposto — da sostituire col numero reale) */
@@ -96,7 +107,7 @@ const WHATSAPP_NUMBER = "393290937951";
 const PLACES = [
   { key: "Fiumicino", label: "Aeroporto di Fiumicino (FCO)", car: 60, van: 75 },
   { key: "Ciampino", label: "Aeroporto di Ciampino (CIA)", car: 60, van: 75 },
-  { key: "Civitavecchia", label: "Porto di Civitavecchia", car: 160, van: 180 },
+  { key: "Civitavecchia", label: "Porto di Civitavecchia", car: 160, van: 190 },
 ];
 
 const hotelLabel = (h) => `${h.name} — ${h.address}`;
@@ -106,7 +117,11 @@ const routeBase = (pickup, dropoff, vehicle, hotelId) => {
   const find = (s) => PLACES.find((p) => (s || "").toLowerCase().includes(p.key.toLowerCase()));
   const a = find(pickup);
   const b = find(dropoff);
-  const place = a && !b ? a : b && !a ? b : null;
+  let place = a && !b ? a : b && !a ? b : null;
+  // Porto ↔ Aeroporto: si applica la tariffa Civitavecchia
+  if (!place && a && b && a.key !== b.key) {
+    place = a.key === "Civitavecchia" ? a : b.key === "Civitavecchia" ? b : null;
+  }
   if (!place) return 0;
   const v = vehicle === "van" ? "van" : "car";
   const override = HOTEL_RATES[hotelId] && HOTEL_RATES[hotelId][place.key];
@@ -174,26 +189,26 @@ const driverPhone = (name) => {
 
 const SEED_RIDES = [
   {
-    id: 1, code: "LW-1041", hotelId: "h1", client: "Sig. Andersen", clientPhone: "+45 20 12 34 56", receptionist: "Elena",
-    date: TODAY, time: "09:30", pickup: "Grand Hotel Riviera — Via Veneto 12, Roma",
+    id: 1, code: "LW-1041", hotelId: "h12", client: "Sig. Andersen", clientPhone: "+45 20 12 34 56", receptionist: "Elena",
+    date: TODAY, time: "09:30", pickup: "Rome Art Hotel — Via dei Due Macelli 120, Roma",
     dropoff: "Aeroporto di Fiumicino (FCO)", pax: 2, flight: "AZ 1734", vehicle: "car",
-    notes: "2 valigie grandi", base: 60, price: 70, status: "completata", driver: "Carlos",
+    notes: "2 valigie grandi", base: 55, price: 70, status: "completata", driver: "Carlos",
   },
   {
-    id: 2, code: "LW-1042", hotelId: "h2", client: "Fam. Dubois", clientPhone: "+33 6 12 34 56 78", receptionist: "Paolo",
+    id: 2, code: "LW-1042", hotelId: "h7", client: "Fam. Dubois", clientPhone: "+33 6 12 34 56 78", receptionist: "Paolo",
     date: TODAY, time: "13:40", pickup: "Aeroporto di Ciampino (CIA)",
-    dropoff: "Palazzo Aurora — Piazza Navona 8, Roma", pax: 4, flight: "FR 1226", vehicle: "car",
-    notes: "Seggiolino bambino", base: 60, price: 70, status: "confermata", driver: "Marco R.",
+    dropoff: "Suite Sistina — Via Sistina 54, Roma", pax: 4, flight: "FR 1226", vehicle: "car",
+    notes: "Seggiolino bambino", base: 55, price: 70, status: "confermata", driver: "Marco R.",
   },
   {
-    id: 3, code: "LW-1043", hotelId: "h1", client: "Sig.ra Keller", clientPhone: "+49 171 234 5678", receptionist: "Elena",
-    date: TOMORROW, time: "08:00", pickup: "Grand Hotel Riviera",
+    id: 3, code: "LW-1043", hotelId: "h11", client: "Sig.ra Keller", clientPhone: "+49 171 234 5678", receptionist: "Elena",
+    date: TOMORROW, time: "08:00", pickup: "Rome Hotel Sicilia — Via Sicilia 24, Roma",
     dropoff: "Stazione Centrale", pax: 1, flight: "", vehicle: "car",
     notes: "", base: 0, price: 45, status: "richiesta", driver: "",
   },
   {
-    id: 4, code: "LW-1044", hotelId: "h3", client: "Mr. & Mrs. Ito", clientPhone: "+81 90 1234 5678", receptionist: "Miriam",
-    date: TOMORROW, time: "18:45", pickup: "Boutique Hotel Bellavista",
+    id: 4, code: "LW-1044", hotelId: "h13", client: "Mr. & Mrs. Ito", clientPhone: "+81 90 1234 5678", receptionist: "Miriam",
+    date: TOMORROW, time: "18:45", pickup: "Star Hotel — Via Palestro 49, Roma",
     dropoff: "Ristorante La Terrazza", pax: 2, flight: "", vehicle: "car",
     notes: "Ritorno ore 23:00 da concordare", base: 0, price: 0, status: "richiesta", driver: "",
   },
@@ -714,7 +729,8 @@ function HotelPanel({ hotel, rides, onNewRide, onUpdate, onExit }) {
     const pax = e.target.value;
     setForm((f) => ({
       ...f, pax,
-      vehicle: f.vehicleTouched ? f.vehicle : suggestVehicle(pax),
+      // sopra i 4 pax il van è obbligatorio; sotto, si può comunque scegliere il van
+      vehicle: (Number(pax) || 1) > 4 ? "van" : f.vehicleTouched ? f.vehicle : "car",
     }));
   };
   const setVehicle = (e) => setForm((f) => ({ ...f, vehicle: e.target.value, vehicleTouched: true }));
@@ -910,12 +926,17 @@ function HotelPanel({ hotel, rides, onNewRide, onUpdate, onExit }) {
                 className="w-full rounded-lg px-3 py-2 text-base outline-none"
                 style={inputStyle}
               >
-                <option value="car">Berlina/SUV · fino a 4 pax</option>
+                <option value="car" disabled={(Number(form.pax) || 1) > 4}>Berlina/SUV · fino a 4 pax</option>
                 <option value="van">Van · 5–8 pax o bagagli extra</option>
               </select>
+              {(Number(form.pax) || 1) > 4 && (
+                <p className="text-xs mt-1" style={{ color: T.muted, fontFamily: "Jost, sans-serif" }}>
+                  Con più di 4 passeggeri il van è obbligatorio.
+                </p>
+              )}
             </Field>
-            {!airportArr && !portArr && (
-              <Field label="Volo (opzionale, per partenze verso l'aeroporto)">
+            {!airportArr && isAirport(form.dropoff) && (
+              <Field label="Volo di partenza (opzionale)">
                 <Input value={form.flight} onChange={set("flight")} placeholder="Es. AZ 1734" />
               </Field>
             )}
@@ -1081,7 +1102,7 @@ function HotelRideCard({ ride, hotel, onUpdate }) {
       clientPhone: form.phone, modified: true,
     };
     if (ride.status === "richiesta") patch.base = editBase;
-    patch.vehicle = form.vehicle;
+    patch.vehicle = (Number(form.pax) || 1) > 4 ? "van" : form.vehicle;
     patch.price = editPrice > 0 ? editPrice : editBase;
     patch.extraMarkup = editOverCap;
     onUpdate(ride.id, patch);
@@ -1154,7 +1175,7 @@ function HotelRideCard({ ride, hotel, onUpdate }) {
               className="w-full rounded-lg px-3 py-2 text-base outline-none"
               style={inputStyle}
             >
-              <option value="car">Berlina/SUV · fino a 4 pax</option>
+              <option value="car" disabled={(Number(form.pax) || 1) > 4}>Berlina/SUV · fino a 4 pax</option>
               <option value="van">Van · 5–8 pax o bagagli extra</option>
             </select>
           </Field>
@@ -1302,13 +1323,23 @@ function AdminPanel({ rides, onUpdate, onExit }) {
                 </span>
                 <select
                   value={r.driver}
-                  onChange={(e) => onUpdate(r.id, { driver: e.target.value })}
+                  onChange={(e) => {
+                    if (e.target.value === "__new__") {
+                      const n = window.prompt("Nome del nuovo autista esterno:");
+                      if (!n) return;
+                      const p = window.prompt("Telefono WhatsApp (es. +39 ...):");
+                      if (!p) return;
+                      DRIVERS.push({ name: n.trim(), phone: p.trim() });
+                      onUpdate(r.id, { driver: n.trim() });
+                    } else onUpdate(r.id, { driver: e.target.value });
+                  }}
                   className="flex-1 rounded-lg px-3 py-2 text-base outline-none"
                   style={inputStyle}
                 >
                   {DRIVERS.map((d) => (
                     <option key={d.name} value={d.name}>{d.name}</option>
                   ))}
+                  <option value="__new__">➕ Nuovo autista esterno…</option>
                 </select>
               </div>
               {r.clientPhone ? (
@@ -1519,6 +1550,7 @@ function Row({ label, value, color, big }) {
 
 function RequestCard({ ride, onUpdate }) {
   const [price, setPrice] = useState(ride.price > 0 ? ride.price : "");
+  const [newDriver, setNewDriver] = useState(null); // {name, phone} in inserimento
   const [base, setBase] = useState(ride.base > 0 ? ride.base : routeBase(ride.pickup, ride.dropoff, ride.vehicle || suggestVehicle(ride.pax), ride.hotelId) || "");
   const [driver, setDriver] = useState(ride.driver || DRIVERS[0].name);
   const hotel = HOTELS.find((h) => h.id === ride.hotelId);
@@ -1547,15 +1579,41 @@ function RequestCard({ ride, onUpdate }) {
       <Field label="Autista">
         <select
           value={driver}
-          onChange={(e) => setDriver(e.target.value)}
+          onChange={(e) => {
+            if (e.target.value === "__new__") setNewDriver({ name: "", phone: "" });
+            else { setNewDriver(null); setDriver(e.target.value); }
+          }}
           className="w-full rounded-lg px-3 py-2 text-base outline-none"
           style={inputStyle}
         >
           {DRIVERS.map((d) => (
             <option key={d.name} value={d.name}>{d.name}</option>
           ))}
+          <option value="__new__">➕ Nuovo autista esterno…</option>
         </select>
       </Field>
+      {newDriver && (
+        <div className="mt-2 p-3 rounded-lg space-y-2" style={{ background: T.surface2, border: `1px solid ${T.line}` }}>
+          <Field label="Nome autista">
+            <Input value={newDriver.name} onChange={(e) => setNewDriver({ ...newDriver, name: e.target.value })} placeholder="Es. Giorgio B." />
+          </Field>
+          <Field label="Telefono (WhatsApp)">
+            <Input type="tel" value={newDriver.phone} onChange={(e) => setNewDriver({ ...newDriver, phone: e.target.value })} placeholder="+39 ..." />
+          </Field>
+          <button
+            onClick={() => {
+              if (!newDriver.name.trim() || !newDriver.phone.trim()) return;
+              DRIVERS.push({ name: newDriver.name.trim(), phone: newDriver.phone.trim() });
+              setDriver(newDriver.name.trim());
+              setNewDriver(null);
+            }}
+            className="w-full py-2 rounded-lg text-xs font-medium"
+            style={{ background: T.gold, color: "#14110A", fontFamily: "Jost, sans-serif" }}
+          >
+            Aggiungi autista
+          </button>
+        </div>
+      )}
       {driverPhone(driver) ? (
         <div className="mt-2 text-xs" style={{ color: T.blue, fontFamily: "Jost, sans-serif" }}>
           ☏ {driver}: {driverPhone(driver)} — visibile all'hotel dopo la conferma
