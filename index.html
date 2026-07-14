@@ -776,6 +776,36 @@ function HotelPanel({ hotel, rides, onNewRide, onUpdate, onExit }) {
       <Header subtitle={hotel.name} onExit={onExit} />
       <WhatsAppWidget contextName={hotel.name} />
 
+      <div className="px-4 pt-3 max-w-md lg:max-w-4xl mx-auto" style={{ fontFamily: "Jost, sans-serif" }}>
+        <div className="flex gap-2 flex-wrap items-center">
+          {[["tutte", "Tutte"], ["oggi", "Oggi"], ["7g", "7 giorni"], ["mese", "Mese"], ["giorno", "Giorno"], ["intervallo", "Intervallo"]].map(([k, label]) => (
+            <button
+              key={k}
+              onClick={() => setFilter(k)}
+              className="px-3 py-1 rounded-full text-xs"
+              style={{
+                background: filter === k ? T.goldSoft : "transparent",
+                color: filter === k ? T.gold : T.muted,
+                border: `1px solid ${filter === k ? T.gold : T.line}`,
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {filter === "giorno" && (
+          <div className="mt-2 max-w-xs">
+            <Input type="date" value={fDay} onChange={(e) => setFDay(e.target.value)} />
+          </div>
+        )}
+        {filter === "intervallo" && (
+          <div className="mt-2 grid grid-cols-2 gap-2 max-w-sm">
+            <Input type="date" value={fFrom} onChange={(e) => setFFrom(e.target.value)} />
+            <Input type="date" value={fTo} onChange={(e) => setFTo(e.target.value)} />
+          </div>
+        )}
+      </div>
+
       <nav className="flex gap-2 px-4 pt-4 pb-2 overflow-x-auto max-w-md lg:max-w-4xl mx-auto">
         {tabs.map(([k, label]) => (
           <button
@@ -996,8 +1026,13 @@ function HotelPanel({ hotel, rides, onNewRide, onUpdate, onExit }) {
               Nessuna corsa ancora. Inserisci la prima dalla scheda “Nuova corsa”.
             </p>
           )}
-          {[...mine].reverse().map((r) => (
-            <HotelRideCard key={r.id} ride={r} hotel={hotel} onUpdate={onUpdate} />
+          {groupByDate(mine).map((g) => (
+            <React.Fragment key={g.date}>
+              <div className="lg:col-span-2"><DayHeader date={g.date} rides={g.rides} /></div>
+              {g.rides.map((r) => (
+                <HotelRideCard key={r.id} ride={r} hotel={hotel} onUpdate={onUpdate} />
+              ))}
+            </React.Fragment>
           ))}
         </section>
       )}
@@ -1232,6 +1267,39 @@ function HotelRideCard({ ride, hotel, onUpdate }) {
 
 /* ---------- admin (Carlos) panel ---------- */
 
+/* Raggruppa le corse per data (asc) */
+const groupByDate = (arr) => {
+  const map = {};
+  arr.forEach((r) => { (map[r.date] = map[r.date] || []).push(r); });
+  return Object.keys(map).sort().map((d) => ({ date: d, rides: map[d] }));
+};
+
+const dayLong = (iso) => {
+  const d = new Date(iso + "T00:00");
+  const s = d.toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" });
+  return s.charAt(0).toUpperCase() + s.slice(1);
+};
+
+/* Intestazione di giornata: data grande + n° servizi + incasso */
+function DayHeader({ date, rides, showRevenue }) {
+  const revenue = rides.reduce((s, r) => s + (r.price || 0), 0);
+  const today = date === TODAY;
+  return (
+    <div
+      className="flex items-end justify-between mt-4 mb-1 pb-2"
+      style={{ borderBottom: `2px solid ${today ? T.gold : T.line}` }}
+    >
+      <div className="text-2xl leading-tight" style={{ color: today ? T.gold : T.ivory, fontFamily: "Marcellus, serif" }}>
+        {dayLong(date)}{today ? " · Oggi" : date === TOMORROW ? " · Domani" : ""}
+      </div>
+      <div className="text-xs text-right pb-1" style={{ color: T.muted, fontFamily: "Jost, sans-serif" }}>
+        {rides.length} {rides.length === 1 ? "servizio" : "servizi"}
+        {showRevenue ? <span style={{ color: T.gold }}> · {eur(revenue)}</span> : null}
+      </div>
+    </div>
+  );
+}
+
 const monthLabel = (ym) => {
   const [y, m] = ym.split("-");
   const d = new Date(Number(y), Number(m) - 1, 1);
@@ -1242,13 +1310,28 @@ const monthLabel = (ym) => {
 function AdminPanel({ rides, onUpdate, onExit }) {
   const [tab, setTab] = useState("richieste");
   const [month, setMonth] = useState(TODAY.slice(0, 7));
+  const [filter, setFilter] = useState("tutte"); // tutte | oggi | 7g | mese | giorno | intervallo
+  const [fDay, setFDay] = useState(TODAY);
+  const [fFrom, setFFrom] = useState(TODAY);
+  const [fTo, setFTo] = useState(_d(7));
+  const [editId, setEditId] = useState(null);
+  const [envelopes, setEnvelopes] = useState({}); // "YYYY-MM:hotelId" -> busta consegnata
+
+  const inFilter = (r) => {
+    if (filter === "oggi") return r.date === TODAY;
+    if (filter === "7g") return r.date >= TODAY && r.date <= _d(7);
+    if (filter === "mese") return r.date.slice(0, 7) === TODAY.slice(0, 7);
+    if (filter === "giorno") return r.date === fDay;
+    if (filter === "intervallo") return (!fFrom || r.date >= fFrom) && (!fTo || r.date <= fTo);
+    return true;
+  };
 
   const chrono = (arr) => [...arr].sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
   const byStatus = (s) => rides.filter((r) => r.status === s);
-  const requests = chrono(byStatus("richiesta"));
-  const planned = chrono(byStatus("confermata"));
-  const done = chrono(byStatus("completata")).reverse();
-  const rejected = byStatus("rifiutata");
+  const requests = chrono(byStatus("richiesta").filter(inFilter));
+  const planned = chrono(byStatus("confermata").filter(inFilter));
+  const done = chrono(byStatus("completata").filter(inFilter)).reverse();
+  const rejected = byStatus("rifiutata").filter(inFilter);
 
   const revenue = done.reduce((s, r) => s + r.price, 0);
   const hotelDue = done.reduce((s, r) => s + hotelCut(r), 0);
@@ -1277,6 +1360,36 @@ function AdminPanel({ rides, onUpdate, onExit }) {
         <Stat label="Incasso" value={eur(revenue)} accent={T.green} />
       </div>
 
+      <div className="px-4 pt-3 max-w-md lg:max-w-4xl mx-auto" style={{ fontFamily: "Jost, sans-serif" }}>
+        <div className="flex gap-2 flex-wrap items-center">
+          {[["tutte", "Tutte"], ["oggi", "Oggi"], ["7g", "7 giorni"], ["mese", "Mese"], ["giorno", "Giorno"], ["intervallo", "Intervallo"]].map(([k, label]) => (
+            <button
+              key={k}
+              onClick={() => setFilter(k)}
+              className="px-3 py-1 rounded-full text-xs"
+              style={{
+                background: filter === k ? T.goldSoft : "transparent",
+                color: filter === k ? T.gold : T.muted,
+                border: `1px solid ${filter === k ? T.gold : T.line}`,
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {filter === "giorno" && (
+          <div className="mt-2 max-w-xs">
+            <Input type="date" value={fDay} onChange={(e) => setFDay(e.target.value)} />
+          </div>
+        )}
+        {filter === "intervallo" && (
+          <div className="mt-2 grid grid-cols-2 gap-2 max-w-sm">
+            <Input type="date" value={fFrom} onChange={(e) => setFFrom(e.target.value)} />
+            <Input type="date" value={fTo} onChange={(e) => setFTo(e.target.value)} />
+          </div>
+        )}
+      </div>
+
       <nav className="flex gap-2 px-4 pt-4 pb-2 overflow-x-auto max-w-md lg:max-w-4xl mx-auto">
         {tabs.map(([k, label]) => (
           <button
@@ -1302,8 +1415,13 @@ function AdminPanel({ rides, onUpdate, onExit }) {
               Nessuna richiesta in attesa. Tutto sotto controllo.
             </p>
           )}
-          {requests.map((r) => (
-            <RequestCard key={r.id} ride={r} onUpdate={onUpdate} />
+          {groupByDate(requests).map((g) => (
+            <React.Fragment key={g.date}>
+              <div className="lg:col-span-2"><DayHeader date={g.date} rides={g.rides} /></div>
+              {g.rides.map((r) => (
+                <RequestCard key={r.id} ride={r} onUpdate={onUpdate} />
+              ))}
+            </React.Fragment>
           ))}
         </section>
       )}
@@ -1315,7 +1433,10 @@ function AdminPanel({ rides, onUpdate, onExit }) {
               Nessuna corsa in programma.
             </p>
           )}
-          {planned.map((r) => (
+          {groupByDate(planned).map((g) => (
+            <React.Fragment key={g.date}>
+              <div className="lg:col-span-2"><DayHeader date={g.date} rides={g.rides} showRevenue /></div>
+              {g.rides.map((r) => (
             <RideTicket key={r.id} ride={r} hotel={HOTELS.find((h) => h.id === r.hotelId)} showHotel>
               <div className="mt-3 flex items-center gap-2">
                 <span className="text-xs uppercase tracking-widest" style={{ color: T.muted, fontFamily: "Jost, sans-serif" }}>
@@ -1342,6 +1463,14 @@ function AdminPanel({ rides, onUpdate, onExit }) {
                   <option value="__new__">➕ Nuovo autista esterno…</option>
                 </select>
               </div>
+              <button
+                onClick={() => setEditId(editId === r.id ? null : r.id)}
+                className="mt-2 py-1.5 px-3 rounded-lg text-xs"
+                style={{ color: T.gold, border: `1px solid ${T.gold}`, fontFamily: "Jost, sans-serif" }}
+              >
+                ✎ Modifica dettagli
+              </button>
+              {editId === r.id && <OperatorEdit ride={r} onUpdate={onUpdate} onClose={() => setEditId(null)} />}
               {r.clientPhone ? (
                 <a
                   href={`https://wa.me/${r.clientPhone.replace(/\D/g, "")}?text=${encodeURIComponent(
@@ -1398,6 +1527,8 @@ function AdminPanel({ rides, onUpdate, onExit }) {
                 />
               </div>
             </RideTicket>
+              ))}
+            </React.Fragment>
           ))}
         </section>
       )}
@@ -1409,7 +1540,10 @@ function AdminPanel({ rides, onUpdate, onExit }) {
               Ancora nessuna corsa completata.
             </p>
           )}
-          {done.map((r) => (
+          {groupByDate(done).reverse().map((g) => (
+            <React.Fragment key={g.date}>
+              <div className="lg:col-span-2"><DayHeader date={g.date} rides={g.rides} showRevenue /></div>
+              {g.rides.map((r) => (
             <RideTicket key={r.id} ride={r} hotel={HOTELS.find((h) => h.id === r.hotelId)} showHotel>
               {r.clientPhone ? (
                 <a
@@ -1432,6 +1566,8 @@ function AdminPanel({ rides, onUpdate, onExit }) {
                 style={{ color: T.muted, border: `1px solid ${T.line}`, fontFamily: "Jost, sans-serif" }}
               />
             </RideTicket>
+              ))}
+            </React.Fragment>
           ))}
         </section>
       )}
@@ -1498,14 +1634,38 @@ function AdminPanel({ rides, onUpdate, onExit }) {
               const n = hDone.length;
               const tot = hDone.reduce((s, r) => s + hotelCut(r), 0);
               if (n === 0) return null;
+              const envKey = month + ":" + h.id;
               return (
                 <div
                   key={h.id}
-                  className="flex justify-between py-2 text-sm"
+                  className="py-2"
                   style={{ borderBottom: `1px dashed ${T.line}`, fontFamily: "Jost, sans-serif" }}
                 >
-                  <span style={{ color: T.ivory }}>{h.name} · {n} {n === 1 ? "corsa" : "corse"}</span>
-                  <span style={{ color: T.gold }}>{eur(tot)}</span>
+                  <div className="flex justify-between text-sm">
+                    <span style={{ color: T.ivory }}>{h.name} · {n} {n === 1 ? "corsa" : "corse"}</span>
+                    <span style={{ color: T.gold }}>{eur(tot)}</span>
+                  </div>
+                  <div className="flex justify-between items-center gap-2 mt-1.5">
+                    <button
+                      onClick={() => setEnvelopes({ ...envelopes, [envKey]: !envelopes[envKey] })}
+                      className="text-xs px-2 py-1 rounded-lg"
+                      style={{
+                        color: envelopes[envKey] ? T.green : T.muted,
+                        background: envelopes[envKey] ? T.greenSoft : "transparent",
+                        border: `1px solid ${envelopes[envKey] ? T.green : T.line}`,
+                        fontFamily: "Jost, sans-serif",
+                      }}
+                    >
+                      {envelopes[envKey] ? "☑ Busta consegnata" : "☐ Busta da consegnare"}
+                    </button>
+                    <button
+                      onClick={() => exportRides(hDone, "liquidazione-" + h.name.toLowerCase().replace(/[^a-z0-9]+/g, "-") + "-" + month)}
+                      className="text-xs px-2 py-1 rounded-lg"
+                      style={{ color: T.gold, border: `1px solid ${T.gold}`, fontFamily: "Jost, sans-serif" }}
+                    >
+                      ⬇ Excel struttura
+                    </button>
+                  </div>
                 </div>
               );
             })}
@@ -1548,7 +1708,81 @@ function Row({ label, value, color, big }) {
   );
 }
 
+/* Editor completo lato operatore: Carlos modifica qualsiasi campo della corsa */
+function OperatorEdit({ ride, onUpdate, onClose }) {
+  const [f, setF] = useState({
+    client: ride.client, phone: ride.clientPhone || "", date: ride.date, time: ride.time,
+    pickup: ride.pickup, dropoff: ride.dropoff, pax: ride.pax, vehicle: ride.vehicle || "car",
+    flight: ride.flight || "", ship: ride.ship || "", notes: ride.notes || "",
+    price: ride.price || "", base: ride.base || "",
+  });
+  const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  const valid = f.client && f.date && f.time && f.pickup && f.dropoff;
+  const save = () => {
+    if (!valid) return;
+    onUpdate(ride.id, {
+      client: f.client, clientPhone: f.phone, date: f.date, time: f.time,
+      pickup: f.pickup, dropoff: f.dropoff, pax: Number(f.pax) || 1,
+      vehicle: (Number(f.pax) || 1) > 4 ? "van" : f.vehicle,
+      flight: f.flight, ship: f.ship, notes: f.notes,
+      price: Number(f.price) || 0, base: Number(f.base) || 0,
+      modified: false,
+    });
+    onClose();
+  };
+  return (
+    <div className="mt-3 pt-3 space-y-3" style={{ borderTop: `1px dashed ${T.line}` }}>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Ospite"><Input value={f.client} onChange={set("client")} /></Field>
+        <Field label="Telefono"><Input type="tel" value={f.phone} onChange={set("phone")} /></Field>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Data"><Input type="date" value={f.date} onChange={set("date")} /></Field>
+        <Field label="Ora"><Input type="time" value={f.time} onChange={set("time")} /></Field>
+      </div>
+      <Field label="Partenza"><Input value={f.pickup} onChange={set("pickup")} /></Field>
+      <Field label="Destinazione"><Input value={f.dropoff} onChange={set("dropoff")} /></Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Passeggeri"><Input type="number" min="1" max="8" value={f.pax} onChange={set("pax")} /></Field>
+        <Field label="Veicolo">
+          <select value={f.vehicle} onChange={set("vehicle")} className="w-full rounded-lg px-3 py-2 text-base outline-none" style={inputStyle}>
+            <option value="car" disabled={(Number(f.pax) || 1) > 4}>Berlina/SUV</option>
+            <option value="van">Van</option>
+          </select>
+        </Field>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Volo"><Input value={f.flight} onChange={set("flight")} /></Field>
+        <Field label="Nave"><Input value={f.ship} onChange={set("ship")} /></Field>
+      </div>
+      <Field label="Note"><Input value={f.notes} onChange={set("notes")} /></Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Prezzo cliente (€)"><Input type="number" min="0" value={f.price} onChange={set("price")} /></Field>
+        <Field label="Listino (€)"><Input type="number" min="0" value={f.base} onChange={set("base")} /></Field>
+      </div>
+      <div className="flex gap-2">
+        <ActionButton
+          label="Salva modifiche"
+          busyLabel="Salvo…"
+          onAction={save}
+          disabled={!valid}
+          className="flex-1 py-2 rounded-lg text-xs font-medium"
+          style={{ background: valid ? T.gold : T.surface2, color: valid ? "#14110A" : T.muted, fontFamily: "Jost, sans-serif" }}
+        />
+        <button
+          onClick={onClose}
+          className="px-3 py-2 rounded-lg text-xs"
+          style={{ color: T.muted, border: `1px solid ${T.line}`, fontFamily: "Jost, sans-serif" }}
+        >
+          Chiudi
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function RequestCard({ ride, onUpdate }) {
+  const [editingOp, setEditingOp] = useState(false);
   const [price, setPrice] = useState(ride.price > 0 ? ride.price : "");
   const [newDriver, setNewDriver] = useState(null); // {name, phone} in inserimento
   const [base, setBase] = useState(ride.base > 0 ? ride.base : routeBase(ride.pickup, ride.dropoff, ride.vehicle || suggestVehicle(ride.pax), ride.hotelId) || "");
@@ -1638,6 +1872,14 @@ function RequestCard({ ride, onUpdate }) {
           Il prezzo cliente è sotto listino: verifica con l'hotel.
         </div>
       )}
+      <button
+        onClick={() => setEditingOp(!editingOp)}
+        className="mt-3 py-1.5 px-3 rounded-lg text-xs"
+        style={{ color: T.gold, border: `1px solid ${T.gold}`, fontFamily: "Jost, sans-serif" }}
+      >
+        ✎ Modifica dettagli
+      </button>
+      {editingOp && <OperatorEdit ride={ride} onUpdate={onUpdate} onClose={() => setEditingOp(false)} />}
       <div className="mt-3 flex gap-2">
         <ActionButton
           label="Conferma corsa"
